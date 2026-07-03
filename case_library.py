@@ -172,7 +172,7 @@ class CaseLibrary:
                       buffer_post_id, source_url, now, case_id))
                 self._add_event(c, case_id, now, "Updated", f"status={status}")
             else:
-                c.execute("""
+                cur = c.execute("""
                     INSERT INTO cases
                       (case_name, filename, status, archive_url, caption,
                        scheduled_date, buffer_post_id, source_url,
@@ -180,7 +180,7 @@ class CaseLibrary:
                     VALUES (?,?,?,?,?,?,?,?,?,?,?)
                 """, (case_name, filename, status, archive_url, caption,
                       scheduled_date, buffer_post_id, source_url, now, now, now))
-                case_id = c.lastrowid
+                case_id = cur.lastrowid
                 self._add_event(c, case_id, now, "Created", f"status={status}")
         # Generate thumbnail in background (Pillow, not ffmpeg)
         threading.Thread(
