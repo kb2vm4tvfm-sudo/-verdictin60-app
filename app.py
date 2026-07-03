@@ -1,3 +1,4 @@
+"""VerdictIn60 desktop app entry point — orchestrates the Tk UI tabs and wires them to verdictin60_core/verdictin60_ui."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor"))
@@ -20,16 +21,16 @@ from pathlib import Path
 import case_library
 from verdictin60_core.settings import load_settings, save_settings
 from verdictin60_core.paths import name_to_filename, filename_to_display
-from verdictin60_core.scheduling import next_post_datetime, batch_post_datetime, _date_at_post_time
+from verdictin60_core.scheduling import batch_post_datetime, _date_at_post_time
 from verdictin60_core.captions import caption_needs_fallback
 from verdictin60_core.imports import (
     ytdlp_cmd, parse_docx_queue, download_video_url, parse_ytdlp_metadata,
 )
 from verdictin60_core.export import ExportError, run_export_pipeline
 from verdictin60_core.ai import (
-    AI_SPEED_MODES, get_ai_speed_mode, get_ai_model, get_ai_timeout,
+    get_ai_speed_mode, get_ai_model,
     is_timeout_error, check_ollama, check_ollama_model_installed,
-    _ollama_call, ollama_generate, ollama_identify,
+    ollama_generate, ollama_identify,
 )
 from verdictin60_core.research import (
     fetch_wikipedia_summary, gather_verification_sources,
@@ -38,10 +39,9 @@ from verdictin60_core.research import (
     source_section_for_caption,
 )
 from verdictin60_core.publishing import (
-    instagram_connect, autodetect_instagram_id, fetch_ig_media_metrics,
     fetch_buffer_scheduled_texts, next_available_date_safe,
     upload_video, schedule_to_buffer, buffer_video_not_ready,
-    wait_for_public_video_url, UploadPendingError,
+    wait_for_public_video_url,
 )
 from verdictin60_core.recovery import (
     log_recovery_event, scan_recovery_health, recovery_plain_message,
@@ -49,7 +49,7 @@ from verdictin60_core.recovery import (
 from verdictin60_core.utils import _ts, write_log_lines
 from verdictin60_ui.widgets import (
     BG, CRIMSON, CRIMSON_HOT, ERROR_RED, WHITE, OFF_WHITE, MUTED, LIGHT_GRAY,
-    DARK_CARD, ROW_BG, ROW_ALT, _bind_hover, _make_lbtn, _lbtn_enable, _lbtn_disable,
+    _make_lbtn, _lbtn_enable, _lbtn_disable,
 )
 from verdictin60_ui.settings_tab import SettingsDialog
 from verdictin60_ui.single_export_tab import build_single_tab
@@ -136,11 +136,10 @@ def _draw_grain(canvas, w, h):
 
 
 def reformat_caption(case_title: str, raw_caption: str) -> str:
-    import re as _re
     text = raw_caption.strip()
-    text = _re.sub(r'follow @\S+.*', '', text, flags=_re.IGNORECASE).strip()
-    text = _re.sub(r'#\w+(\s+#\w+)*\s*$', '', text, flags=_re.MULTILINE).strip()
-    sentences = _re.split(r'(?<=[.!?])\s+', text)
+    text = re.sub(r'follow @\S+.*', '', text, flags=re.IGNORECASE).strip()
+    text = re.sub(r'#\w+(\s+#\w+)*\s*$', '', text, flags=re.MULTILINE).strip()
+    sentences = re.split(r'(?<=[.!?])\s+', text)
     paragraphs = []
     i = 0
     while i < len(sentences):
@@ -196,7 +195,6 @@ def ensure_creator_credit(caption: str, uploader: str) -> str:
 def fallback_verdict_caption(case_title: str, source_caption: str,
                              research_section: str = "", cautious: bool = False) -> str:
     """Build a usable review caption when AI generation fails or times out."""
-    import re as _re
     weak_verification = cautious or any(
         marker in (research_section or "")
         for marker in (
@@ -209,14 +207,14 @@ def fallback_verdict_caption(case_title: str, source_caption: str,
         )
     )
     source = source_caption.strip()
-    source = _re.sub(r'\[?#([A-Za-z0-9_]+)\]?\([^)]+\)', r'#\1', source)
-    source = _re.sub(r'https?://\S+', '', source)
-    source = _re.sub(r'#\w+', '', source).strip()
-    source = _re.sub(r'\s+', ' ', source)
+    source = re.sub(r'\[?#([A-Za-z0-9_]+)\]?\([^)]+\)', r'#\1', source)
+    source = re.sub(r'https?://\S+', '', source)
+    source = re.sub(r'#\w+', '', source).strip()
+    source = re.sub(r'\s+', ' ', source)
 
     sentences = [
         s.strip()
-        for s in _re.split(r'(?<=[.!?])\s+', source)
+        for s in re.split(r'(?<=[.!?])\s+', source)
         if len(s.strip()) > 20
     ]
     if not sentences:
@@ -306,7 +304,6 @@ def fallback_verdict_caption(case_title: str, source_caption: str,
 
 # ── Shared canvas animation drawing ──────────────────────────────────────────
 def _draw_anim(c, state, phase, status_txt, idle_hint=""):
-    import math as _math
     cw = c.winfo_width()
     ch = c.winfo_height()
     if cw < 10:
@@ -333,9 +330,9 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
 
     open_amt = 0.0
     if state == "processing":
-        open_amt = max(0.0, _math.sin(phase * _math.pi * 2)) ** 0.6
+        open_amt = max(0.0, math.sin(phase * math.pi * 2)) ** 0.6
     elif state == "scheduling":
-        open_amt = 0.75 + 0.05 * _math.sin(phase * _math.pi * 4)
+        open_amt = 0.75 + 0.05 * math.sin(phase * math.pi * 4)
     elif state == "success":
         open_amt = max(0.0, 0.6 - phase * 1.7) if phase < 0.35 else 0.0
 
@@ -371,7 +368,7 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
                       text="CASE FILE", font=("Helvetica", 10, "bold"), fill=txt_col)
 
     if state in ("processing", "scheduling"):
-        pulse = (_math.sin(phase * _math.pi * 6) + 1) / 2
+        pulse = (math.sin(phase * math.pi * 6) + 1) / 2
         r = 4 + int(pulse * 2)
         dx, dy = fx2 - 14, fy1 + 10
         c.create_oval(dx - r, dy - r, dx + r, dy + r, fill=CRIMSON, outline="")
@@ -424,6 +421,8 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
 # ── Main App ──────────────────────────────────────────────────────────────────
 
 class App(tk.Tk):
+    """Root Tk window: builds the tab UI and orchestrates export/import/batch/recovery workflows."""
+
     def __init__(self):
         super().__init__()
         self.title("VerdictIn60 Reel Editor")
@@ -580,7 +579,7 @@ class App(tk.Tk):
             self._recovery_frame.pack(fill="both", expand=True)
             self._tab_recovery_btn.config(bg=CRIMSON, fg=WHITE)
 
-    # ── Single tab ────────────────────────────────────────────────────────────
+    # ── Recovery tab ──────────────────────────────────────────────────────────
     # _build_recovery_tab moved to verdictin60_ui.recovery_tab (Phase 8 refactor).
 
     def _recovery_run_scan(self):
@@ -708,8 +707,6 @@ class App(tk.Tk):
         return "No automatic repair is available for this issue.", "Manual review required."
 
     # ── Batch tab ─────────────────────────────────────────────────────────────
-    # _build_single_tab moved to verdictin60_ui.single_export_tab (Phase 8 refactor).
-
     # _build_batch_tab moved to verdictin60_ui.batch_tab (Phase 8 refactor).
 
     def _on_batch_list_resize(self, event):
@@ -2830,6 +2827,7 @@ class App(tk.Tk):
         _draw_watermarks(self._bg, w, h)
 
     # ── Single tab logic ──────────────────────────────────────────────────────
+    # _build_single_tab moved to verdictin60_ui.single_export_tab (Phase 8 refactor).
 
     def _check_ffmpeg(self):
         if not Path(FFMPEG).exists() and shutil.which("ffmpeg") is None:
@@ -3009,8 +3007,7 @@ class App(tk.Tk):
                     success=True
                 )
         except Exception as e:
-            import traceback as _tb
-            tb = _tb.format_exc()
+            tb = traceback.format_exc()
             print(f"[BUFFER] EXCEPTION:\n{tb}")
             log_lines.append(f"Buffer FAILED: {e}\n{tb}")
             self._finish(
