@@ -47,6 +47,18 @@ from verdictin60_core.recovery import (
     log_recovery_event, scan_recovery_health, recovery_plain_message,
 )
 from verdictin60_core.utils import _ts, write_log_lines
+from verdictin60_ui import (
+    BG, CRIMSON, CRIMSON_HOT, ERROR_RED, WHITE, OFF_WHITE, MUTED, LIGHT_GRAY,
+    DARK_CARD, ROW_BG, ROW_ALT,
+    _draw_watermarks, _draw_grain, _bind_hover, _make_lbtn, _lbtn_enable,
+    _lbtn_disable, _draw_anim,
+)
+from verdictin60_ui.settings_tab import SettingsDialog
+from verdictin60_ui.single_export_tab import build_single_tab
+from verdictin60_ui.batch_tab import build_batch_tab
+from verdictin60_ui.url_import_tab import build_url_tab
+from verdictin60_ui.library_tab import build_library_tab
+from verdictin60_ui.recovery_tab import build_recovery_tab
 
 ASSETS_DIR    = Path(__file__).parent / "assets"
 OUTPUT_DIR    = Path(__file__).parent / "finished-reels"
@@ -56,18 +68,6 @@ LOGO_PATH     = ASSETS_DIR / "logo.png"
 TEMP_CTA      = Path(__file__).parent / "cta-with-voice.mp4"
 LOG_PATH      = Path(__file__).parent / "export-log.txt"
 IMPORT_DOCX_PATH = Path(__file__).parent / "VerdictIn60_Import_With_Captions.docx"
-
-BG          = "#000000"
-CRIMSON     = "#940906"
-CRIMSON_HOT = "#6b0604"
-ERROR_RED   = "#ff4444"
-WHITE       = "#FFFFFF"
-OFF_WHITE   = "#e8e8e8"
-MUTED       = "#555555"
-LIGHT_GRAY  = "#888888"
-DARK_CARD   = "#0e0e0e"
-ROW_BG      = "#0d0d0d"
-ROW_ALT     = "#111111"
 
 FFMPEG      = shutil.which("ffmpeg")  or "/opt/homebrew/bin/ffmpeg"
 FFPROBE     = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
@@ -108,95 +108,8 @@ DEFAULT_HASHTAGS = "#truecrime #verdictin60 #truecrimecommunity #coldcase #crime
 
 
 # ── Background drawing ────────────────────────────────────────────────────────
-
-def _draw_watermarks(canvas, w, h):
-    c = "#1a1a1a"
-    for x1, y1, x2, y2 in [(28, 60, 68, 100), (20, 50, 30, 60), (66, 98, 76, 108)]:
-        canvas.create_rectangle(x1, y1, x2, y2, fill=c, outline="")
-    canvas.create_rectangle(20, 95, 80, 102, fill=c, outline="")
-    cx, cy, r = w - 55, h - 65, 22
-    canvas.create_oval(cx-r, cy-r, cx+r, cy+r, outline=c, width=5)
-    canvas.create_line(cx+int(r*.7), cy+int(r*.7), cx+int(r*1.7), cy+int(r*1.7), fill=c, width=5)
-    bx, by = w - 55, 75
-    for i in range(5):
-        rr = 10 + i * 8
-        canvas.create_arc(bx-rr, by-rr//2, bx+rr, by+rr//2,
-                          start=200, extent=140, style="arc", outline=c, width=2)
-    pts, bx2, by2, br = [], 55, h - 65, 28
-    for deg in range(0, 360, 45):
-        rad = math.radians(deg)
-        pts += [bx2 + br * math.cos(rad), by2 + br * math.sin(rad)]
-    canvas.create_polygon(pts, outline=c, fill="", width=2)
-    canvas.create_oval(bx2-15, by2-15, bx2+15, by2+15, outline=c, width=2)
-
-
-def _draw_grain(canvas, w, h):
-    for gy in range(0, h, 18):
-        for gx in range(0, w, 18):
-            shade = "#0d0d0d" if (gx // 18 + gy // 18) % 2 == 0 else "#0a0a0a"
-            canvas.create_rectangle(gx, gy, gx+1, gy+1, fill=shade, outline="")
-
-
-def _bind_hover(widget, normal_bg, hover_bg, normal_fg=None, hover_fg=None):
-    def on_enter(_):
-        if getattr(widget, "_lbtn_disabled", False):
-            return
-        widget.config(bg=hover_bg)
-        if hover_fg:
-            widget.config(fg=hover_fg)
-    def on_leave(_):
-        if getattr(widget, "_lbtn_disabled", False):
-            return
-        widget.config(bg=normal_bg)
-        if normal_fg:
-            widget.config(fg=normal_fg)
-    widget.bind("<Enter>", on_enter)
-    widget.bind("<Leave>", on_leave)
-
-
-def _make_lbtn(parent, text, command, bg, fg=WHITE, font=("Helvetica", 12, "bold"),
-               hover_bg=None, hover_fg=None, pady=14, padx=20, anchor="center",
-               normal_fg=None):
-    """tk.Label styled as a button — respects bg on macOS unlike tk.Button."""
-    if hover_bg is None:
-        hover_bg = bg
-    lbl = tk.Label(parent, text=text, bg=bg, fg=fg, font=font,
-                   cursor="hand2", pady=pady, padx=padx, anchor=anchor,
-                   highlightthickness=0)
-    lbl._lbtn_disabled = False
-    lbl._lbtn_normal_bg = bg
-    lbl._lbtn_hover_bg  = hover_bg
-    lbl._lbtn_normal_fg = normal_fg or fg
-    lbl._lbtn_hover_fg  = hover_fg or fg
-    lbl._lbtn_command   = command
-
-    def _click(e):
-        if not lbl._lbtn_disabled:
-            command()
-    def _enter(e):
-        if not lbl._lbtn_disabled:
-            lbl.config(bg=hover_bg, fg=lbl._lbtn_hover_fg)
-    def _leave(e):
-        if not lbl._lbtn_disabled:
-            lbl.config(bg=bg, fg=lbl._lbtn_normal_fg)
-
-    lbl.bind("<Button-1>", _click)
-    lbl.bind("<Enter>", _enter)
-    lbl.bind("<Leave>", _leave)
-    return lbl
-
-
-def _lbtn_enable(lbl, bg, fg=WHITE, hover_bg=None):
-    lbl._lbtn_disabled = False
-    lbl._lbtn_normal_bg = bg
-    lbl._lbtn_hover_bg = hover_bg or bg
-    lbl._lbtn_normal_fg = fg
-    lbl.config(bg=bg, fg=fg)
-
-
-def _lbtn_disable(lbl, bg, fg="#888888"):
-    lbl._lbtn_disabled = True
-    lbl.config(bg=bg, fg=fg)
+# _draw_watermarks/_draw_grain/_bind_hover/_make_lbtn/_lbtn_enable/_lbtn_disable
+# moved to verdictin60_ui (Phase 8 refactor).
 
 
 def reformat_caption(case_title: str, raw_caption: str) -> str:
@@ -354,132 +267,7 @@ def fallback_verdict_caption(case_title: str, source_caption: str,
 
 
 # ── Dialogs ───────────────────────────────────────────────────────────────────
-
-class SettingsDialog(tk.Toplevel):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.transient(parent)
-        self.grab_set()
-        self.title("Settings")
-        self.configure(bg=BG)
-        self.resizable(False, True)
-
-        s = load_settings()
-
-        # Top accent bar
-        tk.Frame(self, bg=CRIMSON, height=3).pack(fill="x")
-
-        # Header
-        hdr = tk.Frame(self, bg=BG)
-        hdr.pack(fill="x", padx=30, pady=(24, 0))
-        tk.Label(hdr, text="SETTINGS", font=("Helvetica", 14, "bold"),
-                 fg=WHITE, bg=BG, anchor="w").pack(side="left")
-
-        fields_frame = tk.Frame(self, bg=BG)
-        fields_frame.pack(padx=30, fill="x", pady=(8, 0))
-
-        self._vars = {}
-
-        # ── Buffer section ────────────────────────────────────────────────────
-        tk.Frame(fields_frame, bg="#2a2a2a", height=1).pack(fill="x", pady=(12, 8))
-        tk.Label(fields_frame, text="BUFFER", font=("Helvetica", 8, "bold"),
-                 fg=CRIMSON, bg=BG, anchor="w").pack(fill="x", pady=(0, 4))
-
-        buffer_rows = [
-            ("buffer_key",        "Buffer API Key",              s.get("buffer_key", ""),        True),
-            ("buffer_channel_id", "Buffer Instagram Channel ID", s.get("buffer_channel_id", ""), False),
-            ("post_time",         "Daily Post Time (HH:MM)",     s.get("post_time", "18:00"),    False),
-        ]
-        for key, label, value, masked in buffer_rows:
-            self._make_field(fields_frame, key, label, value, masked)
-
-        # ── Internet Archive section ──────────────────────────────────────────
-        tk.Frame(fields_frame, bg="#2a2a2a", height=1).pack(fill="x", pady=(20, 8))
-        tk.Label(fields_frame, text="INTERNET ARCHIVE  —  VIDEO HOSTING", font=("Helvetica", 8, "bold"),
-                 fg=CRIMSON, bg=BG, anchor="w").pack(fill="x", pady=(0, 4))
-
-        ia_rows = [
-            ("ia_access_key", "IA Access Key",  s.get("ia_access_key", ""),  False),
-            ("ia_secret_key", "IA Secret Key",  s.get("ia_secret_key", ""),  True),
-        ]
-        for key, label, value, masked in ia_rows:
-            self._make_field(fields_frame, key, label, value, masked)
-
-        # ── AI section ────────────────────────────────────────────────────────
-        tk.Frame(fields_frame, bg="#2a2a2a", height=1).pack(fill="x", pady=(20, 8))
-        tk.Label(fields_frame, text="AI  —  OLLAMA SETTINGS", font=("Helvetica", 8, "bold"),
-                 fg=CRIMSON, bg=BG, anchor="w").pack(fill="x", pady=(0, 4))
-
-        tk.Label(fields_frame, text="AI SPEED MODE", font=("Helvetica", 8, "bold"),
-                 fg="#AAAAAA", bg=BG, anchor="w", justify="left").pack(fill="x", pady=(10, 3))
-        ai_speed_options = [
-            "Fast",
-            "Balanced",
-            "Best Accuracy",
-        ]
-        current_speed = s.get("ai_speed_mode", "")
-        if current_speed not in AI_SPEED_MODES:
-            current_ai = s.get("ai_model", "qwen3:14b")
-            current_speed = "Best Accuracy" if current_ai == "qwen3:32b" else "Balanced"
-        self._ai_speed_var = tk.StringVar(value=current_speed or "Balanced")
-        ai_dropdown = ttk.Combobox(
-            fields_frame, textvariable=self._ai_speed_var,
-            values=ai_speed_options, state="readonly",
-            font=("Helvetica", 11)
-        )
-        ai_dropdown.pack(fill="x", ipady=4)
-
-        tk.Label(fields_frame, text="PREFERRED BROWSER FOR COOKIES", font=("Helvetica", 8, "bold"),
-                 fg="#AAAAAA", bg=BG, anchor="w", justify="left").pack(fill="x", pady=(10, 3))
-        browser_options = ["chrome", "safari", "firefox"]
-        self._browser_var = tk.StringVar(value=s.get("preferred_browser", "chrome"))
-        browser_dropdown = ttk.Combobox(
-            fields_frame, textvariable=self._browser_var,
-            values=browser_options, state="readonly",
-            font=("Helvetica", 11)
-        )
-        browser_dropdown.pack(fill="x", ipady=4)
-
-        # ── Save button ───────────────────────────────────────────────────────
-        tk.Frame(self, bg="#2a2a2a", height=1).pack(fill="x", padx=30, pady=(20, 0))
-        btn = _make_lbtn(
-            self, "SAVE SETTINGS", self._save,
-            bg=CRIMSON, fg=WHITE, hover_bg=CRIMSON_HOT,
-            font=("Helvetica", 11, "bold"), pady=12, padx=20
-        )
-        btn.pack(padx=30, fill="x", pady=(12, 24))
-
-        self.update_idletasks()
-        pw, ph = parent.winfo_width(), parent.winfo_height()
-        px, py = parent.winfo_rootx(), parent.winfo_rooty()
-        dw, dh = self.winfo_reqwidth(), self.winfo_reqheight()
-        self.geometry(f"{max(dw, 420)}x{dh}+{px+(pw-dw)//2}+{py+(ph-dh)//2}")
-
-    def _make_field(self, parent, key, label, value, masked):
-        tk.Label(parent, text=label.upper(), font=("Helvetica", 8, "bold"),
-                 fg="#AAAAAA", bg=BG, anchor="w", justify="left").pack(fill="x", pady=(10, 3))
-        e = tk.Entry(parent, show="*" if masked else "",
-                     font=("Helvetica", 11), fg=WHITE, bg="#1a1a1a",
-                     insertbackground=WHITE, relief="flat",
-                     highlightthickness=1, highlightbackground="#2a2a2a",
-                     highlightcolor=CRIMSON)
-        e.insert(0, value)
-        e.pack(fill="x", ipady=8)
-        var = tk.StringVar(value=value)
-        e.config(textvariable=var)
-        self._vars[key] = var
-
-    def _save(self):
-        current = load_settings()
-        current.update({k: v.get().strip() for k, v in self._vars.items()})
-        speed_mode = self._ai_speed_var.get().strip()
-        if speed_mode not in AI_SPEED_MODES:
-            speed_mode = "Balanced"
-        current["ai_speed_mode"] = speed_mode
-        current["ai_model"] = AI_SPEED_MODES[speed_mode]["caption"]
-        current["preferred_browser"] = self._browser_var.get().strip()
-        save_settings(current)
-        self.destroy()
+# SettingsDialog moved to verdictin60_ui.settings_tab (Phase 8 refactor).
 
 
 # ── Timestamp helper ──────────────────────────────────────────────────────────
@@ -494,120 +282,7 @@ class SettingsDialog(tk.Toplevel):
 
 
 # ── Shared canvas animation drawing ──────────────────────────────────────────
-def _draw_anim(c, state, phase, status_txt, idle_hint=""):
-    import math as _math
-    cw = c.winfo_width()
-    ch = c.winfo_height()
-    if cw < 10:
-        return
-    c.delete("all")
-
-    cx = cw // 2
-
-    FOLDER_MID   = "#9B7A2E"
-    FOLDER_DARK  = "#5C4010"
-    FOLDER_LIGHT = "#C4A04A"
-    PAGE_COL     = "#E8E4D8"
-    GAVEL_HEAD   = "#DDDDDD"
-    GAVEL_SHADE  = "#AAAAAA"
-    HANDLE_COL   = "#8B6030"
-
-    fw, fh = 224, 78
-    fy_base = 55
-    fx1, fy1 = cx - fw // 2, fy_base
-    fx2, fy2 = cx + fw // 2, fy_base + fh
-    tw, th = 68, 17
-    tx1, ty1 = fx1 + 14, fy1 - th
-    tx2, ty2 = tx1 + tw, fy1
-
-    open_amt = 0.0
-    if state == "processing":
-        open_amt = max(0.0, _math.sin(phase * _math.pi * 2)) ** 0.6
-    elif state == "scheduling":
-        open_amt = 0.75 + 0.05 * _math.sin(phase * _math.pi * 4)
-    elif state == "success":
-        open_amt = max(0.0, 0.6 - phase * 1.7) if phase < 0.35 else 0.0
-
-    if open_amt > 0.04:
-        rise = int(open_amt * 44)
-        for i, (x_off, col) in enumerate([(-28, "#D4D0C4"), (0, PAGE_COL), (28, "#DEDAD0")]):
-            c.create_rectangle(
-                cx + x_off - 20, fy1 - rise + 18 + i * 2,
-                cx + x_off + 20, fy1 + 14,
-                fill=col, outline="#B0AC9C", width=1
-            )
-            for li in range(3):
-                ly = fy1 - rise + 26 + i * 2 + li * 6
-                if ly < fy1 + 10:
-                    c.create_line(cx + x_off - 13, ly, cx + x_off + 13, ly,
-                                  fill="#888880", width=1)
-
-    c.create_rectangle(fx1, fy1, fx2, fy2,
-                       fill=FOLDER_MID, outline=FOLDER_DARK, width=2)
-    c.create_rectangle(fx1 + 2, fy1 + 2, fx2 - 2, fy1 + 10,
-                       fill=FOLDER_LIGHT, outline="")
-    c.create_polygon(
-        tx1 + 6, ty1, tx2, ty1,
-        tx2, ty2, tx1, ty2,
-        fill=FOLDER_LIGHT, outline=FOLDER_DARK, width=2
-    )
-
-    alpha_text = max(0.0, 1.0 - open_amt * 2.5)
-    if alpha_text > 0.3:
-        gray_val = int(0xFF * alpha_text)
-        txt_col  = f"#{gray_val:02x}{gray_val:02x}{gray_val:02x}"
-        c.create_text(cx, fy1 + fh // 2 + 2,
-                      text="CASE FILE", font=("Helvetica", 10, "bold"), fill=txt_col)
-
-    if state in ("processing", "scheduling"):
-        pulse = (_math.sin(phase * _math.pi * 6) + 1) / 2
-        r = 4 + int(pulse * 2)
-        dx, dy = fx2 - 14, fy1 + 10
-        c.create_oval(dx - r, dy - r, dx + r, dy + r, fill=CRIMSON, outline="")
-
-    if state == "success":
-        impact_phase = min(1.0, phase / 0.35)
-        gavel_y = int(-60 + impact_phase * (fy1 - 22 + 60))
-        if 0.34 < phase < 0.60:
-            c.configure(highlightbackground=CRIMSON, highlightthickness=2)
-        else:
-            c.configure(highlightbackground="#2a2a2a", highlightthickness=1)
-        gh_w, gh_h = 80, 24
-        ghx1, ghy1 = cx - gh_w // 2, gavel_y
-        ghx2, ghy2 = cx + gh_w // 2, gavel_y + gh_h
-        c.create_rectangle(ghx1, ghy1, ghx2, ghy2,
-                           fill=GAVEL_HEAD, outline=GAVEL_SHADE, width=2)
-        c.create_rectangle(ghx1 + 3, ghy1 + 3, ghx2 - 3, ghy1 + 8,
-                           fill="#F0F0F0", outline="")
-        hx1, hy1 = cx + 28, gavel_y + 16
-        hx2, hy2 = cx + 28 + 36, gavel_y + 16 + 55
-        c.create_polygon(
-            hx1, hy1, hx1 + 10, hy1,
-            hx2 + 10, hy2, hx2, hy2,
-            fill=HANDLE_COL, outline=FOLDER_DARK, width=1
-        )
-        if phase > 0.45:
-            alpha = min(1.0, (phase - 0.45) / 0.25)
-            gray  = int(0xFF * alpha)
-            scheduled_col = f"#{gray:02x}{gray:02x}{gray:02x}"
-            c.create_text(cx, fy2 + 28,
-                          text="✓  SCHEDULED",
-                          font=("Helvetica", 15, "bold"),
-                          fill=scheduled_col)
-
-    if status_txt and state not in ("success",):
-        clean = status_txt.lstrip("⏳📅🔴✅✓ ")
-        c.create_text(cx, fy2 + 20, text=clean,
-                      font=("Courier", 9), fill=LIGHT_GRAY,
-                      width=cw - 40)
-    elif state == "idle" and not status_txt:
-        c.create_text(cx, fy2 + 20, text=idle_hint,
-                      font=("Courier", 9), fill="#444444")
-    elif state == "error" and status_txt:
-        clean = status_txt.lstrip("✗✓ ")
-        c.create_text(cx, fy2 + 20, text=clean,
-                      font=("Courier", 9), fill=ERROR_RED,
-                      width=cw - 40)
+# _draw_anim moved to verdictin60_ui (Phase 8 refactor).
 
 
 # ── Main App ──────────────────────────────────────────────────────────────────
@@ -736,11 +411,11 @@ class App(tk.Tk):
         self._single_frame.pack(fill="both", expand=True)
         # batch / url / library frames hidden initially
 
-        self._build_single_tab(self._single_frame)
-        self._build_batch_tab(self._batch_frame)
-        self._build_url_tab(self._url_frame)
-        self._build_library_tab(self._library_frame)
-        self._build_recovery_tab(self._recovery_frame)
+        build_single_tab(self, self._single_frame)
+        build_batch_tab(self, self._batch_frame)
+        build_url_tab(self, self._url_frame)
+        build_library_tab(self, self._library_frame)
+        build_recovery_tab(self, self._recovery_frame)
 
         # ── Shared footer ─────────────────────────────────────────────────────
         self._build_footer(outer)
@@ -770,37 +445,7 @@ class App(tk.Tk):
             self._tab_recovery_btn.config(bg=CRIMSON, fg=WHITE)
 
     # ── Single tab ────────────────────────────────────────────────────────────
-
-    def _build_recovery_tab(self, parent):
-        PAD = 36
-        inner = tk.Frame(parent, bg=BG)
-        inner.pack(fill="both", expand=True, padx=PAD, pady=(24, 0))
-
-        tk.Label(inner, text="RECOVERY ASSISTANT",
-                 bg=BG, fg=WHITE, font=("Helvetica", 16, "bold")).pack(anchor="w")
-        tk.Label(
-            inner,
-            text="Local rule-based diagnostics. Repairs always require approval.",
-            bg=BG, fg=LIGHT_GRAY, font=("Helvetica", 10),
-            wraplength=640, justify="left"
-        ).pack(anchor="w", pady=(4, 14))
-
-        btn_row = tk.Frame(inner, bg=BG)
-        btn_row.pack(fill="x", pady=(0, 12))
-        _make_lbtn(
-            btn_row, "SCAN ENTIRE APPLICATION", self._recovery_run_scan,
-            bg=CRIMSON, fg=WHITE, hover_bg=CRIMSON_HOT,
-            font=("Helvetica", 11, "bold"), pady=12, padx=18
-        ).pack(side="left")
-
-        self._recovery_overall = tk.Label(
-            inner, text="Status: not scanned yet",
-            bg=BG, fg=LIGHT_GRAY, font=("Helvetica", 10, "bold")
-        )
-        self._recovery_overall.pack(anchor="w", pady=(0, 10))
-
-        self._recovery_results = tk.Frame(inner, bg=BG)
-        self._recovery_results.pack(fill="both", expand=True)
+    # _build_recovery_tab moved to verdictin60_ui.recovery_tab (Phase 8 refactor).
 
     def _recovery_run_scan(self):
         for child in self._recovery_results.winfo_children():
@@ -926,198 +571,11 @@ class App(tk.Tk):
                 return "Could not open the assets folder automatically.", "Please open the assets folder manually."
         return "No automatic repair is available for this issue.", "Manual review required."
 
-    def _build_single_tab(self, parent):
-        PAD = 36
-
-        # ── Select file button ────────────────────────────────────────────────
-        self._select_wrap = select_wrap = tk.Frame(parent, bg=BG)
-        select_wrap.pack(padx=PAD, fill="x", pady=(22, 0))
-        # 1px crimson border via Frame wrapper
-        select_border = tk.Frame(select_wrap, bg=CRIMSON, padx=1, pady=1)
-        select_border.pack(fill="x")
-        self._btn_select = _make_lbtn(
-            select_border, "▶   SELECT CASE FILE", self._pick_file,
-            bg="#1a1a1a", fg=WHITE, hover_bg="#2a2a2a",
-            font=("Helvetica", 13, "bold"), pady=16, padx=22, anchor="w"
-        )
-        self._btn_select.pack(fill="x")
-        tk.Frame(select_wrap, bg=CRIMSON, width=4).place(x=0, y=0, relheight=1.0)
-
-        # ── File card (hidden until chosen) ───────────────────────────────────
-        self._card_frame = tk.Frame(parent, bg=BG)
-        card_inner = tk.Frame(self._card_frame, bg="#1a1a1a",
-                              highlightbackground="#2a2a2a", highlightthickness=1)
-        card_inner.pack(fill="x", padx=PAD, pady=(12, 0))
-        tk.Frame(card_inner, bg=CRIMSON, height=2).pack(fill="x")
-        card_body = tk.Frame(card_inner, bg="#1a1a1a")
-        card_body.pack(fill="x", padx=16, pady=12)
-        tk.Label(card_body, text="▶", font=("Helvetica", 18, "bold"),
-                 fg=CRIMSON, bg="#1a1a1a").grid(row=0, column=0, rowspan=2, padx=(0, 14))
-        self._lbl_filename = tk.Label(card_body, text="",
-                                      font=("Helvetica", 12, "bold"),
-                                      fg=WHITE, bg="#1a1a1a", anchor="w")
-        self._lbl_filename.grid(row=0, column=1, sticky="w")
-        tk.Label(card_body, text="READY FOR PROCESSING",
-                 font=("Helvetica", 8, "bold"), fg=CRIMSON,
-                 bg="#1a1a1a", anchor="w").grid(row=1, column=1, sticky="w")
-        card_body.columnconfigure(1, weight=1)
-
-        # ── Case Title ────────────────────────────────────────────────────────
-        title_frame = tk.Frame(parent, bg=BG)
-        title_frame.pack(padx=PAD, fill="x", pady=(16, 0))
-        tk.Label(title_frame, text="CASE TITLE", font=("Helvetica", 8, "bold"),
-                 fg="#AAAAAA", bg=BG).pack(anchor="w")
-        self._title_entry = tk.Entry(title_frame, textvariable=tk.StringVar(),
-                 font=("Helvetica", 11), fg=WHITE, bg="#1a1a1a",
-                 insertbackground=WHITE, relief="flat",
-                 highlightthickness=1, highlightbackground="#2a2a2a",
-                 highlightcolor=CRIMSON)
-        self._title_var = self._title_entry["textvariable"] = tk.StringVar()
-        self._title_entry.config(textvariable=self._title_var)
-        self._title_entry.pack(fill="x", ipady=8, pady=(6, 0))
-
-        # ── Raw Caption ───────────────────────────────────────────────────────
-        caption_frame = tk.Frame(parent, bg=BG)
-        caption_frame.pack(padx=PAD, fill="x", pady=(14, 0))
-        tk.Label(caption_frame, text="RAW CAPTION", font=("Helvetica", 8, "bold"),
-                 fg="#AAAAAA", bg=BG).pack(anchor="w")
-        self._caption_text = tk.Text(
-            caption_frame, height=8, font=("Helvetica", 10),
-            fg=WHITE, bg="#1a1a1a", insertbackground=WHITE,
-            relief="flat", highlightthickness=1, highlightbackground="#2a2a2a",
-            highlightcolor=CRIMSON, wrap="word", padx=8, pady=8
-        )
-        self._caption_text.pack(fill="x", pady=(6, 0))
-
-        # ── Export button ─────────────────────────────────────────────────────
-        export_wrap = tk.Frame(parent, bg=BG)
-        export_wrap.pack(padx=PAD, fill="x", pady=(20, 0))
-        self._btn_export = _make_lbtn(
-            export_wrap, "EXPORT FINISHED REEL", self._start_export,
-            bg=MUTED, fg="#888888", hover_bg=CRIMSON_HOT, hover_fg=WHITE,
-            normal_fg="#888888", font=("Helvetica", 13, "bold"), pady=16, padx=20
-        )
-        _lbtn_disable(self._btn_export, MUTED, "#888888")
-        self._btn_export.pack(fill="x")
-
-        # ── Case file animation canvas ────────────────────────────────────────
-        self._anim_canvas = tk.Canvas(
-            parent, bg="#0d0d0d", height=170,
-            highlightthickness=1, highlightbackground="#2a2a2a"
-        )
-        self._anim_canvas.pack(padx=PAD, fill="x", pady=(18, 0))
-        self._anim_canvas.bind("<Configure>", lambda e: self._anim_render())
-
-        # Hidden progress/dot/status kept for compat with existing logic
-        self._progress = ttk.Progressbar(parent, orient="horizontal", mode="indeterminate")
-        self._dot = tk.Label(parent, text="●", fg=BG, bg=BG)
-        self._lbl_status = tk.Label(parent, text="", fg=LIGHT_GRAY, bg=BG)
-
-        # Animation state
-        self._anim_state   = "idle"   # idle | processing | scheduling | success | error
-        self._anim_phase   = 0.0      # 0.0–1.0 within the current state
-        self._anim_status  = ""
-        self._anim_tick_id = None
-        self.after(60, self._anim_render)
-
-        # ── Open folder button ────────────────────────────────────────────────
-        self._btn_open = _make_lbtn(
-            parent, "▶   OPEN OUTPUT FOLDER", self._open_output_folder,
-            bg="#2a2a2a", fg="#AAAAAA", hover_bg="#3a3a3a", hover_fg=WHITE,
-            normal_fg="#AAAAAA", font=("Helvetica", 10, "bold"), pady=10, padx=20
-        )
+    # _build_single_tab moved to verdictin60_ui.single_export_tab (Phase 8 refactor).
 
     # ── Batch tab ─────────────────────────────────────────────────────────────
 
-    def _build_batch_tab(self, parent):
-        PAD = 36
-
-        # ── Quick publish latest ───────────────────────────────────────────────
-        quick_border = tk.Frame(parent, bg=CRIMSON, padx=1, pady=1)
-        quick_border.pack(padx=PAD, fill="x", pady=(22, 0))
-        btn_quick = _make_lbtn(
-            quick_border, "⚡   PUBLISH LATEST CASE", self._quick_publish_latest,
-            bg="#1a0000", fg=CRIMSON, hover_bg=CRIMSON, hover_fg=WHITE,
-            font=("Helvetica", 14, "bold"), pady=18, padx=22, anchor="w"
-        )
-        btn_quick.pack(fill="x")
-
-        # ── Add videos / DOCX queue buttons ───────────────────────────────────
-        add_wrap = tk.Frame(parent, bg=BG)
-        add_wrap.pack(padx=PAD, fill="x", pady=(10, 0))
-        add_border = tk.Frame(add_wrap, bg=CRIMSON, padx=1, pady=1)
-        add_border.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        btn_add = _make_lbtn(
-            add_border, "▶   ADD VIDEOS", self._batch_add_files,
-            bg="#1a1a1a", fg=WHITE, hover_bg="#2a2a2a",
-            font=("Helvetica", 13, "bold"), pady=16, padx=22, anchor="w"
-        )
-        btn_add.pack(fill="x")
-        docx_border = tk.Frame(add_wrap, bg="#2a2a2a", padx=1, pady=1)
-        docx_border.pack(side="left", fill="x", expand=True)
-        btn_docx = _make_lbtn(
-            docx_border, "IMPORT DOCX QUEUE", self._batch_import_docx,
-            bg="#1a1a1a", fg=WHITE, hover_bg="#2a2a2a",
-            font=("Helvetica", 13, "bold"), pady=16, padx=22, anchor="w"
-        )
-        btn_docx.pack(fill="x")
-        tk.Frame(add_wrap, bg=CRIMSON, width=4).place(x=0, y=0, relheight=1.0)
-
-        # ── Column headers ────────────────────────────────────────────────────
-        hdr = tk.Frame(parent, bg="#0d0d0d")
-        hdr.pack(padx=PAD, fill="x", pady=(12, 0))
-        for txt, w in [("SOURCE", 160), ("CASE TITLE", 200), ("DATE", 72), ("", 24)]:
-            tk.Label(hdr, text=txt, font=("Helvetica", 7, "bold"),
-                     fg="#AAAAAA", bg="#0d0d0d", width=w//7, anchor="w").pack(side="left", padx=6)
-
-        # ── Scrollable list ───────────────────────────────────────────────────
-        list_outer = tk.Frame(parent, bg="#0d0d0d",
-                              highlightbackground="#2a2a2a", highlightthickness=1)
-        list_outer.pack(padx=PAD, fill="both", expand=True, pady=(0, 0))
-
-        self._batch_canvas = tk.Canvas(list_outer, bg="#0d0d0d", highlightthickness=0)
-        scrollbar = tk.Scrollbar(list_outer, orient="vertical",
-                                 command=self._batch_canvas.yview,
-                                 bg="#1a1a1a", troughcolor="#0d0d0d",
-                                 activebackground=CRIMSON)
-        self._batch_canvas.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-        self._batch_canvas.pack(side="left", fill="both", expand=True)
-
-        self._batch_list_frame = tk.Frame(self._batch_canvas, bg="#0d0d0d")
-        self._batch_canvas_window = self._batch_canvas.create_window(
-            (0, 0), window=self._batch_list_frame, anchor="nw"
-        )
-        self._batch_list_frame.bind("<Configure>", self._on_batch_list_resize)
-        self._batch_canvas.bind("<Configure>", self._on_batch_canvas_resize)
-
-        # Empty state
-        self._batch_empty_lbl = tk.Label(
-            self._batch_list_frame,
-            text="No videos added yet.\nAdd videos or import a DOCX queue to get started.",
-            font=("Helvetica", 10), fg="#555555", bg="#0d0d0d", justify="center"
-        )
-        self._batch_empty_lbl.pack(pady=40)
-
-        # ── Schedule All button ───────────────────────────────────────────────
-        sched_wrap = tk.Frame(parent, bg=BG)
-        sched_wrap.pack(padx=PAD, fill="x", pady=(14, 0))
-        self._btn_schedule_all = _make_lbtn(
-            sched_wrap, "SCHEDULE ALL  ( 0 videos )", self._start_batch,
-            bg=MUTED, fg="#888888", hover_bg=CRIMSON_HOT, hover_fg=WHITE,
-            normal_fg="#888888", font=("Helvetica", 13, "bold"), pady=16, padx=20
-        )
-        _lbtn_disable(self._btn_schedule_all, MUTED, "#888888")
-        self._btn_schedule_all.pack(fill="x")
-
-        # ── Batch status ──────────────────────────────────────────────────────
-        status_bar = tk.Frame(parent, bg="#0d0d0d")
-        status_bar.pack(padx=PAD, fill="x", pady=(10, 0))
-        self._batch_status_lbl = tk.Label(
-            status_bar, text="", font=("Courier", 9),
-            fg=LIGHT_GRAY, bg="#0d0d0d", wraplength=600, justify="left", anchor="w"
-        )
-        self._batch_status_lbl.pack(fill="x", padx=12, pady=8)
+    # _build_batch_tab moved to verdictin60_ui.batch_tab (Phase 8 refactor).
 
     def _on_batch_list_resize(self, event):
         self._batch_canvas.configure(scrollregion=self._batch_canvas.bbox("all"))
@@ -1552,146 +1010,7 @@ class App(tk.Tk):
 
     # ── URL Import tab ────────────────────────────────────────────────────────
 
-    def _build_url_tab(self, parent):
-        PAD = 30
-        scroll_outer = tk.Frame(parent, bg=BG)
-        scroll_outer.pack(fill="both", expand=True)
-        canvas_scroll = tk.Canvas(scroll_outer, bg=BG, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(scroll_outer, orient="vertical",
-                                  command=canvas_scroll.yview)
-        canvas_scroll.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-        canvas_scroll.pack(side="left", fill="both", expand=True)
-        inner = tk.Frame(canvas_scroll, bg=BG)
-        inner_win = canvas_scroll.create_window((0, 0), window=inner, anchor="nw")
-
-        def _on_resize(e):
-            canvas_scroll.itemconfig(inner_win, width=e.width)
-        def _on_inner_configure(e):
-            canvas_scroll.configure(scrollregion=canvas_scroll.bbox("all"))
-        canvas_scroll.bind("<Configure>", _on_resize)
-        inner.bind("<Configure>", _on_inner_configure)
-
-        # ── Ollama status bar ─────────────────────────────────────────────────
-        ollama_bar = tk.Frame(inner, bg="#111111",
-                              highlightthickness=1, highlightbackground="#2a2a2a")
-        ollama_bar.pack(fill="x", padx=PAD, pady=(18, 0))
-        ollama_inner = tk.Frame(ollama_bar, bg="#111111")
-        ollama_inner.pack(fill="x", padx=12, pady=8)
-        self._ollama_dot = tk.Label(ollama_inner, text="●", bg="#111111",
-                                    fg="#444444", font=("Helvetica", 10))
-        self._ollama_dot.pack(side="left")
-        self._ollama_status_lbl = tk.Label(
-            ollama_inner, text="Checking Ollama...", bg="#111111",
-            fg=LIGHT_GRAY, font=("Helvetica", 10)
-        )
-        self._ollama_status_lbl.pack(side="left", padx=(6, 0))
-        self._btn_install_ollama = _make_lbtn(
-            ollama_inner, "Install Ollama", self._url_install_ollama,
-            bg="#1a1a1a", fg=LIGHT_GRAY, hover_bg="#2a2a2a",
-            font=("Helvetica", 9), pady=4, padx=10
-        )
-        # packed/hidden dynamically by _url_check_ollama_status
-
-        # ── URL input ─────────────────────────────────────────────────────────
-        tk.Label(inner, text="PASTE VIDEO URL", bg=BG, fg=LIGHT_GRAY,
-                 font=("Helvetica", 10, "bold")).pack(anchor="w", padx=PAD, pady=(18, 4))
-        url_frame = tk.Frame(inner, bg="#1a1a1a",
-                             highlightthickness=1, highlightbackground="#333333")
-        url_frame.pack(fill="x", padx=PAD)
-        self._url_entry = tk.Entry(url_frame, bg="#1a1a1a", fg=WHITE, insertbackground=WHITE,
-                                   font=("Courier", 13), bd=0, relief="flat",
-                                   highlightthickness=0)
-        self._url_entry.pack(fill="x", padx=10, pady=10)
-        self._url_entry.insert(0, "https://")
-        self._url_entry.bind("<FocusIn>", self._url_entry_focus)
-
-        # ── Platform buttons (cosmetic) ───────────────────────────────────────
-        plat_frame = tk.Frame(inner, bg=BG)
-        plat_frame.pack(padx=PAD, pady=(10, 0), anchor="w")
-        self._url_plat_btns = {}
-        for plat in ("TikTok", "Instagram", "YouTube"):
-            btn = tk.Label(plat_frame, text=plat, bg="#1a1a1a", fg="#555555",
-                           font=("Helvetica", 10, "bold"), padx=14, pady=6,
-                           cursor="hand2", highlightthickness=0)
-            btn.pack(side="left", padx=(0, 6))
-            self._url_plat_btns[plat] = btn
-        self._url_entry.bind("<KeyRelease>", lambda e: self._url_detect_platform())
-
-        # ── Case title ────────────────────────────────────────────────────────
-        title_row = tk.Frame(inner, bg=BG)
-        title_row.pack(fill="x", padx=PAD, pady=(18, 4))
-        tk.Label(title_row, text="CASE TITLE", bg=BG, fg=LIGHT_GRAY,
-                 font=("Helvetica", 10, "bold")).pack(side="left")
-        self._url_ai_badge = tk.Label(title_row, text="  ✦ AI will auto-detect",
-                                      bg=BG, fg="#444444", font=("Helvetica", 9))
-        self._url_ai_badge.pack(side="left", padx=(8, 0))
-        title_frame = tk.Frame(inner, bg="#1a1a1a",
-                               highlightthickness=1, highlightbackground="#333333")
-        title_frame.pack(fill="x", padx=PAD)
-        self._url_title_entry = tk.Entry(title_frame, bg="#1a1a1a", fg=WHITE,
-                                         insertbackground=WHITE, font=("Helvetica", 13),
-                                         bd=0, relief="flat", highlightthickness=0)
-        self._url_title_entry.pack(fill="x", padx=10, pady=10)
-
-        # ── Buffer caption ────────────────────────────────────────────────────
-        cap_row = tk.Frame(inner, bg=BG)
-        cap_row.pack(fill="x", padx=PAD, pady=(18, 4))
-        tk.Label(cap_row, text="BUFFER CAPTION", bg=BG, fg=LIGHT_GRAY,
-                 font=("Helvetica", 10, "bold")).pack(side="left")
-        self._url_cap_badge = tk.Label(cap_row, text="  ✦ AI will generate",
-                                       bg=BG, fg="#444444", font=("Helvetica", 9))
-        self._url_cap_badge.pack(side="left", padx=(8, 0))
-        cap_frame = tk.Frame(inner, bg="#1a1a1a",
-                             highlightthickness=1, highlightbackground="#333333")
-        cap_frame.pack(fill="x", padx=PAD)
-        self._url_caption_text = tk.Text(cap_frame, bg="#1a1a1a", fg=WHITE,
-                                         insertbackground=WHITE, font=("Helvetica", 12),
-                                         bd=0, relief="flat", highlightthickness=0,
-                                         wrap="word", height=7)
-        self._url_caption_text.pack(fill="x", padx=10, pady=10)
-
-        self._btn_use_my_caption = _make_lbtn(
-            inner, "USE THIS CAPTION", self._start_url_use_my_caption,
-            bg="#1a1a1a", fg=LIGHT_GRAY, hover_bg="#2a2a2a", hover_fg=WHITE,
-            font=("Helvetica", 10, "bold"), pady=9, padx=16
-        )
-        self._btn_use_my_caption.pack(padx=PAD, fill="x", pady=(8, 0))
-
-        # ── Import & Schedule button ──────────────────────────────────────────
-        btn_wrapper = tk.Frame(inner, bg=CRIMSON, padx=2, pady=2)
-        btn_wrapper.pack(padx=PAD, pady=(20, 0), fill="x")
-        self._btn_url_import = _make_lbtn(
-            btn_wrapper, "IMPORT & SCHEDULE", self._start_url_import,
-            bg=CRIMSON, fg=WHITE, hover_bg=CRIMSON_HOT,
-            font=("Helvetica", 14, "bold"), pady=16
-        )
-        self._btn_url_import.pack(fill="x")
-
-        # ── Animation canvas ──────────────────────────────────────────────────
-        self._url_anim_canvas = tk.Canvas(
-            inner, bg="#0d0d0d", height=170,
-            highlightthickness=1, highlightbackground="#2a2a2a"
-        )
-        self._url_anim_canvas.pack(padx=PAD, fill="x", pady=(18, 20))
-        self._url_anim_canvas.bind("<Configure>", lambda e: self._url_anim_render())
-
-        self._url_anim_state   = "idle"
-        self._url_anim_phase   = 0.0
-        self._url_anim_status  = ""
-        self._url_anim_tick_id = None
-        self.after(60, self._url_anim_render)
-
-        # ── Retry & Schedule button (hidden until Archive.org poll exhausted) ──
-        self._btn_retry_schedule = _make_lbtn(
-            inner, "↻  RETRY & SCHEDULE", self._url_retry_schedule,
-            bg="#1a4a1a", fg="#2d8a4e", hover_bg="#2a5a2a", hover_fg=WHITE,
-            font=("Helvetica", 12, "bold"), pady=12
-        )
-        # Packed/hidden dynamically — stays hidden until UploadPendingError
-
-        # Check Ollama status after UI is built
-        self.after(200, self._url_check_ollama_status)
+    # _build_url_tab moved to verdictin60_ui.url_import_tab (Phase 8 refactor).
 
     def _url_entry_focus(self, e):
         if self._url_entry.get() == "https://":
@@ -3299,9 +2618,7 @@ class App(tk.Tk):
                     pass
 
     # ── Library tab ───────────────────────────────────────────────────────────
-
-    def _build_library_tab(self, parent):
-        self._lib_tab = case_library.LibraryTab(parent, self._library)
+    # _build_library_tab moved to verdictin60_ui.library_tab (Phase 8 refactor).
 
     def _library_save_case(self, case_name: str, output_path,
                            status: str = "Ready", archive_url: str = "",
