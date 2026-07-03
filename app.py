@@ -18,6 +18,10 @@ import datetime
 import time
 from pathlib import Path
 import case_library
+from verdictin60_core.settings import load_settings, save_settings
+from verdictin60_core.paths import name_to_filename, filename_to_display
+from verdictin60_core.scheduling import next_post_datetime, batch_post_datetime, _date_at_post_time
+from verdictin60_core.captions import caption_needs_fallback
 
 ASSETS_DIR    = Path(__file__).parent / "assets"
 OUTPUT_DIR    = Path(__file__).parent / "finished-reels"
@@ -26,7 +30,6 @@ VOICEOVER_PATH= ASSETS_DIR / "voiceover.mp3"
 LOGO_PATH     = ASSETS_DIR / "logo.png"
 TEMP_CTA      = Path(__file__).parent / "cta-with-voice.mp4"
 LOG_PATH      = Path(__file__).parent / "export-log.txt"
-SETTINGS_PATH = Path(__file__).parent / "settings.json"
 RECOVERY_HISTORY_PATH = Path(__file__).parent / "recovery-history.json"
 SOURCE_CACHE_PATH = Path(__file__).parent / "source-cache.json"
 IMPORT_DOCX_PATH = Path(__file__).parent / "VerdictIn60_Import_With_Captions.docx"
@@ -67,22 +70,7 @@ AI_SPEED_MODES = {
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
-
-def load_settings() -> dict:
-    if SETTINGS_PATH.exists():
-        try:
-            return json.loads(SETTINGS_PATH.read_text())
-        except Exception:
-            pass
-    return {
-        "buffer_key": "", "buffer_channel_id": "", "post_time": "18:00",
-        "ai_speed_mode": "Balanced",
-        "ai_model": "qwen3:14b", "preferred_browser": "chrome",
-    }
-
-
-def save_settings(d: dict):
-    SETTINGS_PATH.write_text(json.dumps(d, indent=2))
+# load_settings/save_settings moved to verdictin60_core.settings (Phase 1 refactor).
 
 
 def ytdlp_cmd(extra_args: list[str]) -> list[str]:
@@ -660,54 +648,12 @@ def fetch_ig_media_metrics(ig_business_id: str, long_token: str,
 
 # ── Name cleaning ─────────────────────────────────────────────────────────────
 
-def name_to_filename(raw: str) -> str:
-    words = re.findall(r"[a-zA-Z0-9]+", raw)
-    if not words:
-        return "Untitled-Case"
-    return "-".join(w.capitalize() for w in words)
-
-
-def filename_to_display(fname: str) -> str:
-    return fname.replace("-", " ")
+# name_to_filename/filename_to_display moved to verdictin60_core.paths (Phase 1 refactor).
 
 
 # ── Scheduling helpers ────────────────────────────────────────────────────────
-
-def next_post_datetime(time_str: str) -> datetime.datetime:
-    try:
-        h, m = [int(x) for x in time_str.strip().split(":")]
-    except Exception:
-        h, m = 18, 0
-    now = datetime.datetime.now()
-    candidate = now.replace(hour=h, minute=m, second=0, microsecond=0)
-    if candidate <= now:
-        candidate += datetime.timedelta(days=1)
-    aware = candidate.replace(tzinfo=datetime.datetime.now().astimezone().tzinfo)
-    return aware.astimezone(datetime.timezone.utc)
-
-
-def batch_post_datetime(time_str: str, offset_days: int) -> datetime.datetime:
-    """tomorrow + offset_days at post_time, as UTC-aware datetime."""
-    try:
-        h, m = [int(x) for x in time_str.strip().split(":")]
-    except Exception:
-        h, m = 18, 0
-    base = datetime.datetime.now() + datetime.timedelta(days=1 + offset_days)
-    candidate = base.replace(hour=h, minute=m, second=0, microsecond=0)
-    aware = candidate.replace(tzinfo=datetime.datetime.now().astimezone().tzinfo)
-    return aware.astimezone(datetime.timezone.utc)
-
-
-def _date_at_post_time(base_date: datetime.datetime, time_str: str) -> datetime.datetime:
-    """Return base_date's calendar day at post_time (local), as UTC-aware datetime."""
-    try:
-        h, m = [int(x) for x in time_str.strip().split(":")]
-    except Exception:
-        h, m = 18, 0
-    local_tz = datetime.datetime.now().astimezone().tzinfo
-    local_base = base_date.astimezone(local_tz)
-    candidate = local_base.replace(hour=h, minute=m, second=0, microsecond=0)
-    return candidate.astimezone(datetime.timezone.utc)
+# next_post_datetime/batch_post_datetime/_date_at_post_time moved to
+# verdictin60_core.scheduling (Phase 1 refactor).
 
 
 def _resolve_buffer_org_id(buffer_key: str, channel_id: str) -> str:
@@ -1083,28 +1029,7 @@ def fallback_verdict_caption(case_title: str, source_caption: str,
     )
 
 
-def caption_needs_fallback(caption: str) -> str:
-    """Return a reason when an AI caption is clearly incomplete or unusable."""
-    # Strip any <think>...</think> blocks (qwen3 and similar thinking models)
-    text = re.sub(r'<think>.*?</think>', '', caption, flags=re.DOTALL | re.IGNORECASE).strip()
-    if not text:
-        return "empty"
-    if len(text) < 280:
-        return "too short"
-    if "Research & Verification" not in text:
-        return "missing Research & Verification"
-    hashtag_count = len(re.findall(r'(?<!\w)#\w+', text))
-    if hashtag_count != 20:
-        return f"wrong hashtag count ({hashtag_count})"
-    if "Follow @VerdictIn60" not in text and "Follow @verdictin60" not in text:
-        return "missing CTA"
-    prose = "\n".join(
-        line for line in text.splitlines()
-        if not line.strip().startswith("#")
-    ).strip()
-    if prose and prose[-1] not in ".!?":
-        return "unfinished sentence"
-    return ""
+# caption_needs_fallback moved to verdictin60_core.captions (Phase 1 refactor).
 
 
 # ── Upload & Buffer ───────────────────────────────────────────────────────────
