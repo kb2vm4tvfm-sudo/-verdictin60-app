@@ -25,22 +25,22 @@ def build_url_tab(app, parent):
     inner.bind("<Configure>", _on_inner_configure)
 
     # ── Ollama status bar ─────────────────────────────────────────────────
-    ollama_bar = tk.Frame(inner, bg="#111111",
-                          highlightthickness=1, highlightbackground="#2a2a2a")
+    ollama_bar = tk.Frame(inner, bg="#121a2b",
+                          highlightthickness=1, highlightbackground="#232c40")
     ollama_bar.pack(fill="x", padx=PAD, pady=(18, 0))
-    ollama_inner = tk.Frame(ollama_bar, bg="#111111")
+    ollama_inner = tk.Frame(ollama_bar, bg="#121a2b")
     ollama_inner.pack(fill="x", padx=12, pady=8)
-    app._ollama_dot = tk.Label(ollama_inner, text="●", bg="#111111",
-                                fg="#444444", font=("Helvetica", 10))
+    app._ollama_dot = tk.Label(ollama_inner, text="●", bg="#121a2b",
+                                fg="#5b6578", font=("Helvetica", 10))
     app._ollama_dot.pack(side="left")
     app._ollama_status_lbl = tk.Label(
-        ollama_inner, text="Checking Ollama...", bg="#111111",
+        ollama_inner, text="Checking Ollama...", bg="#121a2b",
         fg=LIGHT_GRAY, font=("Helvetica", 10)
     )
     app._ollama_status_lbl.pack(side="left", padx=(6, 0))
     app._btn_install_ollama = _make_lbtn(
         ollama_inner, "Install Ollama", app._url_install_ollama,
-        bg="#1a1a1a", fg=LIGHT_GRAY, hover_bg="#2a2a2a",
+        bg="#182236", fg=LIGHT_GRAY, hover_bg="#232c40",
         font=("Helvetica", 9), pady=4, padx=10
     )
     # packed/hidden dynamically by _url_check_ollama_status
@@ -48,10 +48,10 @@ def build_url_tab(app, parent):
     # ── URL input ─────────────────────────────────────────────────────────
     tk.Label(inner, text="PASTE VIDEO URL", bg=BG, fg=LIGHT_GRAY,
              font=("Helvetica", 10, "bold")).pack(anchor="w", padx=PAD, pady=(18, 4))
-    url_frame = tk.Frame(inner, bg="#1a1a1a",
-                         highlightthickness=1, highlightbackground="#333333")
+    url_frame = tk.Frame(inner, bg="#182236",
+                         highlightthickness=1, highlightbackground="#293349")
     url_frame.pack(fill="x", padx=PAD)
-    app._url_entry = tk.Entry(url_frame, bg="#1a1a1a", fg=WHITE, insertbackground=WHITE,
+    app._url_entry = tk.Entry(url_frame, bg="#182236", fg=WHITE, insertbackground=WHITE,
                                font=("Courier", 13), bd=0, relief="flat",
                                highlightthickness=0)
     app._url_entry.pack(fill="x", padx=10, pady=10)
@@ -63,7 +63,7 @@ def build_url_tab(app, parent):
     plat_frame.pack(padx=PAD, pady=(10, 0), anchor="w")
     app._url_plat_btns = {}
     for plat in ("TikTok", "Instagram", "YouTube"):
-        btn = tk.Label(plat_frame, text=plat, bg="#1a1a1a", fg="#555555",
+        btn = tk.Label(plat_frame, text=plat, bg="#182236", fg="#64748b",
                        font=("Helvetica", 10, "bold"), padx=14, pady=6,
                        cursor="hand2", highlightthickness=0)
         btn.pack(side="left", padx=(0, 6))
@@ -76,12 +76,12 @@ def build_url_tab(app, parent):
     tk.Label(title_row, text="CASE TITLE", bg=BG, fg=LIGHT_GRAY,
              font=("Helvetica", 10, "bold")).pack(side="left")
     app._url_ai_badge = tk.Label(title_row, text="  ✦ AI will auto-detect",
-                                  bg=BG, fg="#444444", font=("Helvetica", 9))
+                                  bg=BG, fg="#5b6578", font=("Helvetica", 9))
     app._url_ai_badge.pack(side="left", padx=(8, 0))
-    title_frame = tk.Frame(inner, bg="#1a1a1a",
-                           highlightthickness=1, highlightbackground="#333333")
+    title_frame = tk.Frame(inner, bg="#182236",
+                           highlightthickness=1, highlightbackground="#293349")
     title_frame.pack(fill="x", padx=PAD)
-    app._url_title_entry = tk.Entry(title_frame, bg="#1a1a1a", fg=WHITE,
+    app._url_title_entry = tk.Entry(title_frame, bg="#182236", fg=WHITE,
                                      insertbackground=WHITE, font=("Helvetica", 13),
                                      bd=0, relief="flat", highlightthickness=0)
     app._url_title_entry.pack(fill="x", padx=10, pady=10)
@@ -92,12 +92,12 @@ def build_url_tab(app, parent):
     tk.Label(cap_row, text="BUFFER CAPTION", bg=BG, fg=LIGHT_GRAY,
              font=("Helvetica", 10, "bold")).pack(side="left")
     app._url_cap_badge = tk.Label(cap_row, text="  ✦ AI will generate",
-                                   bg=BG, fg="#444444", font=("Helvetica", 9))
+                                   bg=BG, fg="#5b6578", font=("Helvetica", 9))
     app._url_cap_badge.pack(side="left", padx=(8, 0))
-    cap_frame = tk.Frame(inner, bg="#1a1a1a",
-                         highlightthickness=1, highlightbackground="#333333")
+    cap_frame = tk.Frame(inner, bg="#182236",
+                         highlightthickness=1, highlightbackground="#293349")
     cap_frame.pack(fill="x", padx=PAD)
-    app._url_caption_text = tk.Text(cap_frame, bg="#1a1a1a", fg=WHITE,
+    app._url_caption_text = tk.Text(cap_frame, bg="#182236", fg=WHITE,
                                      insertbackground=WHITE, font=("Helvetica", 12),
                                      bd=0, relief="flat", highlightthickness=0,
                                      wrap="word", height=7)
@@ -105,7 +105,7 @@ def build_url_tab(app, parent):
 
     app._btn_use_my_caption = _make_lbtn(
         inner, "USE THIS CAPTION", app._start_url_use_my_caption,
-        bg="#1a1a1a", fg=LIGHT_GRAY, hover_bg="#2a2a2a", hover_fg=WHITE,
+        bg="#182236", fg=LIGHT_GRAY, hover_bg="#232c40", hover_fg=WHITE,
         font=("Helvetica", 10, "bold"), pady=9, padx=16
     )
     app._btn_use_my_caption.pack(padx=PAD, fill="x", pady=(8, 0))
@@ -122,8 +122,8 @@ def build_url_tab(app, parent):
 
     # ── Animation canvas ──────────────────────────────────────────────────
     app._url_anim_canvas = tk.Canvas(
-        inner, bg="#0d0d0d", height=170,
-        highlightthickness=1, highlightbackground="#2a2a2a"
+        inner, bg="#101625", height=170,
+        highlightthickness=1, highlightbackground="#232c40"
     )
     app._url_anim_canvas.pack(padx=PAD, fill="x", pady=(18, 20))
     app._url_anim_canvas.bind("<Configure>", lambda e: app._url_anim_render())
@@ -137,7 +137,7 @@ def build_url_tab(app, parent):
     # ── Retry & Schedule button (hidden until Archive.org poll exhausted) ──
     app._btn_retry_schedule = _make_lbtn(
         inner, "↻  RETRY & SCHEDULE", app._url_retry_schedule,
-        bg="#1a4a1a", fg="#2d8a4e", hover_bg="#2a5a2a", hover_fg=WHITE,
+        bg="#123322", fg="#22c55e", hover_bg="#1a4a34", hover_fg=WHITE,
         font=("Helvetica", 12, "bold"), pady=12
     )
     # Packed/hidden dynamically — stays hidden until UploadPendingError

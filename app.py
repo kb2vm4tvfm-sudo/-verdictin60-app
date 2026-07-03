@@ -51,6 +51,10 @@ from verdictin60_ui.widgets import (
     BG, CRIMSON, CRIMSON_HOT, ERROR_RED, WHITE, OFF_WHITE, MUTED, LIGHT_GRAY,
     _make_lbtn, _lbtn_enable, _lbtn_disable,
 )
+from verdictin60_ui.theme import SIDEBAR_BG, SIDEBAR_WIDTH, BORDER
+from verdictin60_ui.components import (
+    make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
+)
 from verdictin60_ui.settings_tab import SettingsDialog
 from verdictin60_ui.single_export_tab import build_single_tab
 from verdictin60_ui.batch_tab import build_batch_tab
@@ -108,7 +112,7 @@ DEFAULT_HASHTAGS = "#truecrime #verdictin60 #truecrimecommunity #coldcase #crime
 # ── Background drawing ────────────────────────────────────────────────────────
 
 def _draw_watermarks(canvas, w, h):
-    c = "#1a1a1a"
+    c = "#182236"
     for x1, y1, x2, y2 in [(28, 60, 68, 100), (20, 50, 30, 60), (66, 98, 76, 108)]:
         canvas.create_rectangle(x1, y1, x2, y2, fill=c, outline="")
     canvas.create_rectangle(20, 95, 80, 102, fill=c, outline="")
@@ -131,7 +135,7 @@ def _draw_watermarks(canvas, w, h):
 def _draw_grain(canvas, w, h):
     for gy in range(0, h, 18):
         for gx in range(0, w, 18):
-            shade = "#0d0d0d" if (gx // 18 + gy // 18) % 2 == 0 else "#0a0a0a"
+            shade = "#101625" if (gx // 18 + gy // 18) % 2 == 0 else "#0d1220"
             canvas.create_rectangle(gx, gy, gx+1, gy+1, fill=shade, outline="")
 
 
@@ -317,7 +321,7 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
     FOLDER_LIGHT = "#C4A04A"
     PAGE_COL     = "#E8E4D8"
     GAVEL_HEAD   = "#DDDDDD"
-    GAVEL_SHADE  = "#AAAAAA"
+    GAVEL_SHADE  = "#a8b3c7"
     HANDLE_COL   = "#8B6030"
 
     fw, fh = 224, 78
@@ -379,7 +383,7 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
         if 0.34 < phase < 0.60:
             c.configure(highlightbackground=CRIMSON, highlightthickness=2)
         else:
-            c.configure(highlightbackground="#2a2a2a", highlightthickness=1)
+            c.configure(highlightbackground="#232c40", highlightthickness=1)
         gh_w, gh_h = 80, 24
         ghx1, ghy1 = cx - gh_w // 2, gavel_y
         ghx2, ghy2 = cx + gh_w // 2, gavel_y + gh_h
@@ -410,7 +414,7 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
                       width=cw - 40)
     elif state == "idle" and not status_txt:
         c.create_text(cx, fy2 + 20, text=idle_hint,
-                      font=("Courier", 9), fill="#444444")
+                      font=("Courier", 9), fill="#5b6578")
     elif state == "error" and status_txt:
         clean = status_txt.lstrip("✗✓ ")
         c.create_text(cx, fy2 + 20, text=clean,
@@ -450,92 +454,73 @@ class App(tk.Tk):
 
     # ── Root layout ───────────────────────────────────────────────────────────
 
-    def _build_ui(self):
-        CONTENT_W = 720
+    NAV_ITEMS = [
+        ("single",   "▶", "SINGLE EXPORT"),
+        ("batch",    "▤", "BATCH"),
+        ("url",      "🔗", "URL IMPORT"),
+        ("library",  "▥", "LIBRARY"),
+        ("recovery", "⛭", "RECOVERY"),
+    ]
 
+    def _build_ui(self):
         self._bg = tk.Canvas(self, bg=BG, highlightthickness=0)
         self._bg.place(x=0, y=0, relwidth=1.0, relheight=1.0)
         self.bind("<Configure>", self._on_resize)
 
-        wrapper = tk.Frame(self, bg=BG)
-        wrapper.place(x=0, y=0, relwidth=1.0, relheight=1.0)
+        shell = tk.Frame(self, bg=BG)
+        shell.place(x=0, y=0, relwidth=1.0, relheight=1.0)
 
-        tk.Frame(wrapper, bg=BG).pack(side="left", fill="both", expand=True)
-        self._outer = outer = tk.Frame(wrapper, bg=BG, width=CONTENT_W)
-        outer.pack(side="left", fill="both")
-        outer.pack_propagate(False)
-        tk.Frame(wrapper, bg=BG).pack(side="right", fill="both", expand=True)
+        # ── Sidebar navigation ───────────────────────────────────────────────
+        sidebar = tk.Frame(shell, bg=SIDEBAR_BG, width=SIDEBAR_WIDTH)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
+        tk.Frame(shell, bg=BORDER, width=1).pack(side="left", fill="y")
 
-        # ── Shared header ─────────────────────────────────────────────────────
-        header = tk.Frame(outer, bg=BG)
-        header.pack(fill="x")
-
-        # Top crimson accent bar
-        tk.Frame(header, bg=CRIMSON, height=3).pack(fill="x")
-
-        logo_area = tk.Frame(header, bg=BG)
-        logo_area.pack(fill="x", pady=(24, 0))
+        logo_area = tk.Frame(sidebar, bg=SIDEBAR_BG)
+        logo_area.pack(fill="x", pady=(24, 4))
 
         logo_loaded = False
         try:
             from PIL import Image, ImageTk
             raw = Image.open(LOGO_PATH)
-            raw.thumbnail((180, 90), Image.LANCZOS)
+            raw.thumbnail((150, 70), Image.LANCZOS)
             self._logo_img = ImageTk.PhotoImage(raw)
-            tk.Label(logo_area, image=self._logo_img, bg=BG).pack()
+            tk.Label(logo_area, image=self._logo_img, bg=SIDEBAR_BG).pack()
             logo_loaded = True
         except Exception:
             pass
 
         if not logo_loaded:
             tk.Label(logo_area, text="VERDICTIN60",
-                     font=("Helvetica", 32, "bold"), fg=WHITE, bg=BG).pack()
+                     font=("Helvetica", 18, "bold"), fg=WHITE, bg=SIDEBAR_BG).pack()
 
-        tk.Label(header, text="N E W  C A S E .  E V E R Y  D A Y .",
-                 font=("Helvetica", 9, "bold"), fg=CRIMSON, bg=BG).pack(pady=(6, 0))
+        tk.Label(sidebar, text="N E W  C A S E .  E V E R Y  D A Y .",
+                 font=("Helvetica", 7, "bold"), fg=CRIMSON, bg=SIDEBAR_BG).pack(pady=(2, 16))
 
-        tk.Frame(header, bg="#1a1a1a", height=1).pack(fill="x", pady=(16, 0))
+        tk.Frame(sidebar, bg=BORDER, height=1).pack(fill="x", padx=16, pady=(0, 12))
 
-        # ── Tab switcher ──────────────────────────────────────────────────────
-        tab_bar = tk.Frame(outer, bg=BG)
-        tab_bar.pack(fill="x", padx=30, pady=(14, 0))
+        nav_frame = tk.Frame(sidebar, bg=SIDEBAR_BG)
+        nav_frame.pack(fill="x")
 
-        self._tab_single_btn = _make_lbtn(
-            tab_bar, "SINGLE", lambda: self._switch_tab("single"),
-            bg=CRIMSON, fg=WHITE, hover_bg=CRIMSON_HOT,
-            font=("Helvetica", 10, "bold"), pady=10, padx=24
-        )
-        self._tab_single_btn.pack(side="left")
+        self._nav_rows = {}
+        for key, icon, label in self.NAV_ITEMS:
+            row = make_sidebar_button(nav_frame, icon, label, lambda k=key: self._switch_tab(k))
+            row.pack(fill="x")
+            self._nav_rows[key] = row
 
-        self._tab_batch_btn = _make_lbtn(
-            tab_bar, "BATCH", lambda: self._switch_tab("batch"),
-            bg="#111111", fg="#555555", hover_bg="#1a1a1a", hover_fg="#AAAAAA",
-            normal_fg="#555555", font=("Helvetica", 10, "bold"), pady=10, padx=24
-        )
-        self._tab_batch_btn.pack(side="left", padx=(2, 0))
+        tk.Frame(sidebar, bg=SIDEBAR_BG).pack(fill="both", expand=True)  # spacer pushes settings down
 
-        self._tab_url_btn = _make_lbtn(
-            tab_bar, "URL IMPORT", lambda: self._switch_tab("url"),
-            bg="#111111", fg="#555555", hover_bg="#1a1a1a", hover_fg="#AAAAAA",
-            normal_fg="#555555", font=("Helvetica", 10, "bold"), pady=10, padx=24
-        )
-        self._tab_url_btn.pack(side="left", padx=(2, 0))
+        tk.Frame(sidebar, bg=BORDER, height=1).pack(fill="x", padx=16, pady=(0, 4))
+        settings_row = make_sidebar_button(sidebar, "⚙", "SETTINGS", self._open_settings)
+        settings_row.pack(fill="x", pady=(0, 16))
 
-        self._tab_library_btn = _make_lbtn(
-            tab_bar, "LIBRARY", lambda: self._switch_tab("library"),
-            bg="#111111", fg="#555555", hover_bg="#1a1a1a", hover_fg="#AAAAAA",
-            normal_fg="#555555", font=("Helvetica", 10, "bold"), pady=10, padx=24
-        )
-        self._tab_library_btn.pack(side="left", padx=(2, 0))
+        # ── Content column ───────────────────────────────────────────────────
+        self._outer = outer = tk.Frame(shell, bg=BG)
+        outer.pack(side="left", fill="both", expand=True)
 
-        self._tab_recovery_btn = _make_lbtn(
-            tab_bar, "RECOVERY", lambda: self._switch_tab("recovery"),
-            bg="#111111", fg="#555555", hover_bg="#1a1a1a", hover_fg="#AAAAAA",
-            normal_fg="#555555", font=("Helvetica", 10, "bold"), pady=10, padx=24
-        )
-        self._tab_recovery_btn.pack(side="left", padx=(2, 0))
-
-        tk.Frame(outer, bg="#2a2a2a", height=1).pack(fill="x", padx=30, pady=(6, 0))
+        top_bar, self._top_bar_title = make_top_bar(outer)
+        top_bar.pack(fill="x")
+        tk.Frame(outer, bg=BORDER, height=1).pack(fill="x")
 
         # ── Tab content frames ────────────────────────────────────────────────
         self._single_frame  = tk.Frame(outer, bg=BG)
@@ -555,29 +540,34 @@ class App(tk.Tk):
         # ── Shared footer ─────────────────────────────────────────────────────
         self._build_footer(outer)
 
+        self._switch_tab("single")
+
+    _NAV_TITLES = {
+        "single":   "SINGLE EXPORT",
+        "batch":    "BATCH",
+        "url":      "URL IMPORT",
+        "library":  "LIBRARY",
+        "recovery": "RECOVERY",
+    }
+
     def _switch_tab(self, tab: str):
         for f in (self._single_frame, self._batch_frame,
                   self._url_frame, self._library_frame, self._recovery_frame):
             f.pack_forget()
-        for btn in (self._tab_single_btn, self._tab_batch_btn,
-                    self._tab_url_btn, self._tab_library_btn, self._tab_recovery_btn):
-            btn.config(bg="#111111", fg="#555555")
+        for key, row in self._nav_rows.items():
+            set_sidebar_active(row) if key == tab else set_sidebar_inactive(row)
+        self._top_bar_title.config(text=self._NAV_TITLES.get(tab, ""))
         if tab == "single":
             self._single_frame.pack(fill="both", expand=True)
-            self._tab_single_btn.config(bg=CRIMSON, fg=WHITE)
         elif tab == "batch":
             self._batch_frame.pack(fill="both", expand=True)
-            self._tab_batch_btn.config(bg=CRIMSON, fg=WHITE)
         elif tab == "url":
             self._url_frame.pack(fill="both", expand=True)
-            self._tab_url_btn.config(bg=CRIMSON, fg=WHITE)
         elif tab == "library":
             self._library_frame.pack(fill="both", expand=True)
-            self._tab_library_btn.config(bg=CRIMSON, fg=WHITE)
             self._lib_tab.refresh()
         elif tab == "recovery":
             self._recovery_frame.pack(fill="both", expand=True)
-            self._tab_recovery_btn.config(bg=CRIMSON, fg=WHITE)
 
     # ── Recovery tab ──────────────────────────────────────────────────────────
     # _build_recovery_tab moved to verdictin60_ui.recovery_tab (Phase 8 refactor).
@@ -590,38 +580,44 @@ class App(tk.Tk):
         overall = "Attention Required" if attention else "Healthy"
         self._recovery_overall.config(
             text=f"Application Health: {overall}",
-            fg=ERROR_RED if attention else "#2d8a4e"
+            fg=ERROR_RED if attention else "#22c55e"
         )
         for issue in issues:
             self._recovery_add_row(issue)
 
     def _recovery_add_row(self, issue: dict):
         severity = issue.get("severity", "ok")
-        accent = "#2d8a4e" if severity == "ok" else CRIMSON
+        accent = "#22c55e" if severity == "ok" else CRIMSON
         row = tk.Frame(
-            self._recovery_results, bg="#101010",
-            highlightthickness=1, highlightbackground="#2a2a2a"
+            self._recovery_results, bg="#111a2b",
+            highlightthickness=1, highlightbackground="#232c40"
         )
         row.pack(fill="x", pady=(0, 8))
 
-        left = tk.Frame(row, bg="#101010")
+        left = tk.Frame(row, bg="#111a2b")
         left.pack(side="left", fill="both", expand=True, padx=12, pady=10)
-        tk.Label(left, text=f"{issue['area']}  ·  {issue['status']}",
-                 bg="#101010", fg=accent,
-                 font=("Helvetica", 10, "bold")).pack(anchor="w")
+        header_row = tk.Frame(left, bg="#111a2b")
+        header_row.pack(anchor="w", fill="x")
+        tk.Label(header_row, text=f"{issue['area']}  ·  {issue['status']}",
+                 bg="#111a2b", fg=accent,
+                 font=("Helvetica", 10, "bold")).pack(side="left")
+        make_badge(
+            header_row, "OK" if severity == "ok" else severity.upper(),
+            status="success" if severity == "ok" else ("warning" if severity == "warning" else "error"),
+        ).pack(side="left", padx=(8, 0))
         tk.Label(left, text=issue["problem"],
-                 bg="#101010", fg=WHITE,
+                 bg="#111a2b", fg=WHITE,
                  font=("Helvetica", 10), wraplength=470,
                  justify="left").pack(anchor="w", pady=(3, 0))
         tk.Label(left, text=issue["why"],
-                 bg="#101010", fg=LIGHT_GRAY,
+                 bg="#111a2b", fg=LIGHT_GRAY,
                  font=("Helvetica", 9), wraplength=470,
                  justify="left").pack(anchor="w", pady=(3, 0))
 
         if issue.get("action"):
             _make_lbtn(
                 row, "REPAIR", lambda i=issue: self._recovery_confirm_repair(i),
-                bg="#1a1a1a", fg=WHITE, hover_bg="#2a2a2a",
+                bg="#182236", fg=WHITE, hover_bg="#232c40",
                 font=("Helvetica", 9, "bold"), pady=8, padx=14
             ).pack(side="right", padx=12)
 
@@ -658,7 +654,7 @@ class App(tk.Tk):
 
         def _approve():
             result, verification = self._recovery_apply_repair(issue)
-            result_lbl.config(text=f"{result}\n{verification}", fg="#2d8a4e")
+            result_lbl.config(text=f"{result}\n{verification}", fg="#22c55e")
             log_recovery_event(issue["problem"], issue["area"], True, result, verification)
             self.after(600, self._recovery_run_scan)
 
@@ -673,7 +669,7 @@ class App(tk.Tk):
         ).pack(side="left", fill="x", expand=True, padx=(0, 6))
         _make_lbtn(
             btn_row, "CANCEL", _cancel,
-            bg="#2a2a2a", fg=WHITE, hover_bg="#3a3a3a",
+            bg="#232c40", fg=WHITE, hover_bg="#333e58",
             font=("Helvetica", 10, "bold"), pady=10
         ).pack(side="left", fill="x", expand=True, padx=(6, 0))
 
@@ -756,7 +752,7 @@ class App(tk.Tk):
             )
         self._batch_status_lbl.config(
             text=f"Loaded {len(rows)} DOCX queue item{'s' if len(rows) != 1 else ''}.",
-            fg="#2d8a4e"
+            fg="#22c55e"
         )
         self._refresh_batch_ui()
 
@@ -820,7 +816,7 @@ class App(tk.Tk):
         if not new_rows:
             self._batch_status_lbl.config(
                 text="All cases in the document are already scheduled in Buffer.",
-                fg="#2d8a4e"
+                fg="#22c55e"
             )
             return
 
@@ -852,27 +848,27 @@ class App(tk.Tk):
                        case_title: str = "", caption: str = "",
                        final_caption: bool = False):
         idx = len(self._batch_rows)
-        bg = "#111111" if idx % 2 == 0 else "#151515"
+        bg = "#121a2b" if idx % 2 == 0 else "#141c2e"
 
         frame = tk.Frame(self._batch_list_frame, bg=bg, pady=0)
         frame.pack(fill="x", padx=0)
-        tk.Frame(frame, bg="#2a2a2a", height=1).pack(fill="x")
+        tk.Frame(frame, bg="#232c40", height=1).pack(fill="x")
         inner = tk.Frame(frame, bg=bg)
         inner.pack(fill="x", padx=10, pady=8)
 
         # Source label (truncated)
         source_name = path.stem if path else re.sub(r"^https?://", "", url)
         fname = source_name[:22] + "…" if len(source_name) > 22 else source_name
-        tk.Label(inner, text=fname, font=("Helvetica", 8), fg="#AAAAAA",
+        tk.Label(inner, text=fname, font=("Helvetica", 8), fg="#a8b3c7",
                  bg=bg, width=20, anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 8))
 
         # Case title entry
         initial_title = case_title or (filename_to_display(name_to_filename(path.stem)) if path else "")
         case_var = tk.StringVar(value=initial_title)
         title_entry = tk.Entry(inner, textvariable=case_var,
-                               font=("Helvetica", 9), fg=WHITE, bg="#1a1a1a",
+                               font=("Helvetica", 9), fg=WHITE, bg="#182236",
                                insertbackground=WHITE, relief="flat",
-                               highlightthickness=1, highlightbackground="#2a2a2a",
+                               highlightthickness=1, highlightbackground="#232c40",
                                highlightcolor=CRIMSON)
         title_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
 
@@ -888,16 +884,16 @@ class App(tk.Tk):
         # Remove button
         remove_btn = _make_lbtn(
             inner, "✕", lambda i=idx: self._batch_remove_row(i),
-            bg=bg, fg="#555555", hover_bg=bg, hover_fg=ERROR_RED, normal_fg="#555555",
+            bg=bg, fg="#64748b", hover_bg=bg, hover_fg=ERROR_RED, normal_fg="#64748b",
             font=("Helvetica", 11, "bold"), pady=2, padx=4
         )
         remove_btn.grid(row=0, column=3, padx=(4, 0))
 
         # Raw caption text area (full width, row 1)
         caption_text = tk.Text(inner, height=4, font=("Helvetica", 9),
-                               fg=WHITE, bg="#1a1a1a", insertbackground=WHITE,
+                               fg=WHITE, bg="#182236", insertbackground=WHITE,
                                relief="flat", highlightthickness=1,
-                               highlightbackground="#2a2a2a", highlightcolor=CRIMSON,
+                               highlightbackground="#232c40", highlightcolor=CRIMSON,
                                wrap="word", padx=6, pady=6)
         caption_text.insert("1.0", caption or "Paste raw caption here...")
         caption_text.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(6, 2))
@@ -944,7 +940,7 @@ class App(tk.Tk):
         if n == 0:
             self._batch_empty_lbl.pack(pady=30)
             self._btn_schedule_all.config(text="SCHEDULE ALL  ( 0 videos )")
-            _lbtn_disable(self._btn_schedule_all, MUTED, "#888888")
+            _lbtn_disable(self._btn_schedule_all, MUTED, "#94a3b8")
         else:
             self._batch_empty_lbl.pack_forget()
             self._btn_schedule_all.config(
@@ -953,7 +949,7 @@ class App(tk.Tk):
             if not self._batch_running:
                 _lbtn_enable(self._btn_schedule_all, CRIMSON, WHITE, CRIMSON_HOT)
             else:
-                _lbtn_disable(self._btn_schedule_all, MUTED, "#888888")
+                _lbtn_disable(self._btn_schedule_all, MUTED, "#94a3b8")
 
     # ── Batch processing ──────────────────────────────────────────────────────
 
@@ -984,7 +980,7 @@ class App(tk.Tk):
                 )
                 return
         self._batch_running = True
-        _lbtn_disable(self._btn_schedule_all, MUTED, "#888888")
+        _lbtn_disable(self._btn_schedule_all, MUTED, "#94a3b8")
         self._batch_status_lbl.config(text="🔴  Processing batch...", fg=LIGHT_GRAY)
         threading.Thread(target=self._run_batch, daemon=True).start()
 
@@ -1050,7 +1046,7 @@ class App(tk.Tk):
 
             if not has_buffer:
                 self._library_save_case(title, output_path, status="Ready")
-                set_row_status(f"✓  Saved as {output_path.name}", "#2d8a4e")
+                set_row_status(f"✓  Saved as {output_path.name}", "#22c55e")
                 continue
 
             # Step 2: caption. DOCX captions are final Buffer captions.
@@ -1124,7 +1120,7 @@ class App(tk.Tk):
                     self._library_save_case(title, output_path, status="Scheduled",
                                             archive_url=video_url, caption=caption,
                                             scheduled_date=due, buffer_post_id=post_id)
-                    set_row_status(f"✅  Scheduled for {due_fmt}", "#2d8a4e")
+                    set_row_status(f"✅  Scheduled for {due_fmt}", "#22c55e")
                 elif "message" in data:
                     set_row_status(f"✓  Saved  ·  Buffer: {data['message']}", ERROR_RED)
                 else:
@@ -1136,7 +1132,7 @@ class App(tk.Tk):
         self._batch_running = False
         self.after(0, lambda: self._batch_status_lbl.config(
             text=f"✅  Batch complete — {len(rows)} video{'s' if len(rows)!=1 else ''} processed.",
-            fg="#2d8a4e"
+            fg="#22c55e"
         ))
         self.after(0, self._refresh_batch_ui)
 
@@ -1160,7 +1156,7 @@ class App(tk.Tk):
             if plat == detected:
                 btn.config(bg=CRIMSON, fg=WHITE)
             else:
-                btn.config(bg="#1a1a1a", fg="#555555")
+                btn.config(bg="#182236", fg="#64748b")
 
     def _url_prepare_next_import(self):
         self._url_entry.delete(0, "end")
@@ -1188,13 +1184,13 @@ class App(tk.Tk):
     def _show_model_banner(self, model: str):
         if hasattr(self, "_model_banner") and self._model_banner.winfo_exists():
             return
-        self._model_banner = tk.Frame(self._outer, bg="#1a0a00",
+        self._model_banner = tk.Frame(self._outer, bg="#241a0a",
                                       highlightthickness=1, highlightbackground=CRIMSON)
         self._model_banner.pack(fill="x", padx=30, pady=(8, 0), before=self._single_frame)
-        inner = tk.Frame(self._model_banner, bg="#1a0a00")
+        inner = tk.Frame(self._model_banner, bg="#241a0a")
         inner.pack(fill="x", padx=12, pady=8)
         tk.Label(inner, text=f"⚠  Recommended AI model ({model}) is not installed.",
-                 bg="#1a0a00", fg="#ffaa44",
+                 bg="#241a0a", fg="#fbbf24",
                  font=("Helvetica", 10)).pack(side="left")
         _make_lbtn(inner, "Install Model",
                    lambda: self._install_ai_model(model),
@@ -1210,13 +1206,13 @@ class App(tk.Tk):
                  font=("Helvetica", 13, "bold")).pack(pady=(20, 6))
         tk.Label(win, text="This may take several minutes — do not close this window.",
                  bg=BG, fg=LIGHT_GRAY, font=("Helvetica", 10)).pack()
-        log_frame = tk.Frame(win, bg="#0d0d0d", highlightthickness=1,
-                             highlightbackground="#333333")
+        log_frame = tk.Frame(win, bg="#101625", highlightthickness=1,
+                             highlightbackground="#293349")
         log_frame.pack(fill="both", expand=True, padx=20, pady=14)
-        log_txt = tk.Text(log_frame, bg="#0d0d0d", fg=LIGHT_GRAY, font=("Courier", 9),
+        log_txt = tk.Text(log_frame, bg="#101625", fg=LIGHT_GRAY, font=("Courier", 9),
                           bd=0, wrap="word", state="disabled", highlightthickness=0)
         log_txt.pack(fill="both", expand=True, padx=8, pady=8)
-        done_lbl = tk.Label(win, text="", bg=BG, fg="#2d8a4e",
+        done_lbl = tk.Label(win, text="", bg=BG, fg="#22c55e",
                             font=("Helvetica", 11, "bold"))
         done_lbl.pack(pady=(0, 14))
 
@@ -1239,7 +1235,7 @@ class App(tk.Tk):
                 proc.wait()
                 if proc.returncode == 0:
                     self.after(0, lambda: done_lbl.config(
-                        text=f"✅  {model} is ready!", fg="#2d8a4e"))
+                        text=f"✅  {model} is ready!", fg="#22c55e"))
                     if hasattr(self, "_model_banner") and self._model_banner.winfo_exists():
                         self.after(0, self._model_banner.destroy)
                 else:
@@ -1260,13 +1256,13 @@ class App(tk.Tk):
         model = get_ai_model("caption")
         speed_mode = get_ai_speed_mode()
         if ok:
-            self._ollama_dot.config(fg="#2d8a4e")
+            self._ollama_dot.config(fg="#22c55e")
             self._ollama_status_lbl.config(
-                text=f"Ollama ready — {speed_mode} mode ({model})", fg="#2d8a4e"
+                text=f"Ollama ready — {speed_mode} mode ({model})", fg="#22c55e"
             )
             self._btn_install_ollama.pack_forget()
-            self._url_ai_badge.config(fg="#2d8a4e")
-            self._url_cap_badge.config(fg="#2d8a4e")
+            self._url_ai_badge.config(fg="#22c55e")
+            self._url_cap_badge.config(fg="#22c55e")
         else:
             self._ollama_dot.config(fg=ERROR_RED)
             self._ollama_status_lbl.config(
@@ -1274,8 +1270,8 @@ class App(tk.Tk):
                 fg=LIGHT_GRAY
             )
             self._btn_install_ollama.pack(side="left", padx=(10, 0))
-            self._url_ai_badge.config(fg="#444444")
-            self._url_cap_badge.config(fg="#444444")
+            self._url_ai_badge.config(fg="#5b6578")
+            self._url_cap_badge.config(fg="#5b6578")
 
     def _url_install_ollama(self):
         """Open a top-level progress window and run Ollama install + model pull."""
@@ -1287,14 +1283,14 @@ class App(tk.Tk):
                  font=("Helvetica", 13, "bold")).pack(pady=(20, 6))
         tk.Label(win, text="This may take a few minutes — do not close this window.",
                  bg=BG, fg=LIGHT_GRAY, font=("Helvetica", 10)).pack()
-        log_frame = tk.Frame(win, bg="#0d0d0d",
-                             highlightthickness=1, highlightbackground="#333333")
+        log_frame = tk.Frame(win, bg="#101625",
+                             highlightthickness=1, highlightbackground="#293349")
         log_frame.pack(fill="both", expand=True, padx=20, pady=14)
-        log_txt = tk.Text(log_frame, bg="#0d0d0d", fg=LIGHT_GRAY,
+        log_txt = tk.Text(log_frame, bg="#101625", fg=LIGHT_GRAY,
                           font=("Courier", 9), bd=0, wrap="word",
                           state="disabled", highlightthickness=0)
         log_txt.pack(fill="both", expand=True, padx=8, pady=8)
-        done_lbl = tk.Label(win, text="", bg=BG, fg="#2d8a4e",
+        done_lbl = tk.Label(win, text="", bg=BG, fg="#22c55e",
                             font=("Helvetica", 11, "bold"))
         done_lbl.pack(pady=(0, 14))
 
@@ -1357,7 +1353,7 @@ class App(tk.Tk):
                         return
 
                 self.after(0, lambda: done_lbl.config(
-                    text="✅  Ollama installed and AI models ready!", fg="#2d8a4e"))
+                    text="✅  Ollama installed and AI models ready!", fg="#22c55e"))
                 self.after(0, self._url_check_ollama_status)
             except Exception as e:
                 self.after(0, lambda: done_lbl.config(
@@ -1441,8 +1437,8 @@ class App(tk.Tk):
         # check_ollama() has a 3-second network timeout — run it on the thread,
         # NOT here on the main thread where it would freeze the UI.
         print("[URL IMPORT] Handing off to background thread")
-        _lbtn_disable(self._btn_url_import, MUTED, "#888888")
-        _lbtn_disable(self._btn_use_my_caption, "#1a1a1a", "#555555")
+        _lbtn_disable(self._btn_url_import, MUTED, "#94a3b8")
+        _lbtn_disable(self._btn_use_my_caption, "#182236", "#64748b")
         self._url_set_status("⏳  Fetching video metadata...")
         threading.Thread(
             target=self._run_url_import,
@@ -1463,7 +1459,7 @@ class App(tk.Tk):
         self._url_install_btn = _make_lbtn(
             self._url_anim_canvas.master, "Install yt-dlp",
             self._url_install_ytdlp,
-            bg="#1a1a1a", fg=LIGHT_GRAY, hover_bg="#2a2a2a",
+            bg="#182236", fg=LIGHT_GRAY, hover_bg="#232c40",
             font=("Helvetica", 10), pady=8, padx=16
         )
         self._url_install_btn.pack(pady=(0, 8))
@@ -1496,7 +1492,7 @@ class App(tk.Tk):
         if not self._pending_upload_url:
             return
         self._btn_retry_schedule.pack_forget()
-        _lbtn_disable(self._btn_url_import, MUTED, "#888888")
+        _lbtn_disable(self._btn_url_import, MUTED, "#94a3b8")
         url      = self._pending_upload_url
         caption  = self._pending_caption
         due_dt   = self._pending_due_dt
@@ -1580,7 +1576,7 @@ class App(tk.Tk):
             print("[URL IMPORT] Re-enabling button")
             self.after(0, lambda: _lbtn_enable(self._btn_url_import, CRIMSON, WHITE, CRIMSON_HOT))
             self.after(0, lambda: _lbtn_enable(
-                self._btn_use_my_caption, "#1a1a1a", LIGHT_GRAY, "#2a2a2a"
+                self._btn_use_my_caption, "#182236", LIGHT_GRAY, "#232c40"
             ))
 
         try:
@@ -1805,10 +1801,10 @@ class App(tk.Tk):
                         tk.Label(dlg, text=hint, bg=BG, fg=LIGHT_GRAY,
                                  font=("Helvetica", 10)).pack(pady=(0, 10))
 
-                        name_frame = tk.Frame(dlg, bg="#1a1a1a",
-                                             highlightthickness=1, highlightbackground="#333333")
+                        name_frame = tk.Frame(dlg, bg="#182236",
+                                             highlightthickness=1, highlightbackground="#293349")
                         name_frame.pack(fill="x", padx=24)
-                        name_entry = tk.Entry(name_frame, bg="#1a1a1a", fg=WHITE,
+                        name_entry = tk.Entry(name_frame, bg="#182236", fg=WHITE,
                                               insertbackground=WHITE, font=("Helvetica", 13),
                                               bd=0, relief="flat", highlightthickness=0)
                         name_entry.pack(fill="x", padx=10, pady=10)
@@ -1828,8 +1824,8 @@ class App(tk.Tk):
                         _make_lbtn(btn_row, "CONTINUE", _ok, bg=CRIMSON, fg=WHITE,
                                    hover_bg=CRIMSON_HOT, font=("Helvetica", 11, "bold"),
                                    pady=10).pack(side="left", fill="x", expand=True, padx=(0, 6))
-                        _make_lbtn(btn_row, "CANCEL", _cancel, bg="#2a2a2a", fg=WHITE,
-                                   hover_bg="#3a3a3a", font=("Helvetica", 11, "bold"),
+                        _make_lbtn(btn_row, "CANCEL", _cancel, bg="#232c40", fg=WHITE,
+                                   hover_bg="#333e58", font=("Helvetica", 11, "bold"),
                                    pady=10).pack(side="left", fill="x", expand=True)
                         dlg.protocol("WM_DELETE_WINDOW", _cancel)
                         dlg.wait_window()
@@ -2310,44 +2306,44 @@ class App(tk.Tk):
 
                     # Hallucination warnings (shown in red if any)
                     if _warnings_snap:
-                        warn_frame = tk.Frame(dlg, bg="#1a0000",
-                                             highlightthickness=1, highlightbackground="#660000")
+                        warn_frame = tk.Frame(dlg, bg="#2a1015",
+                                             highlightthickness=1, highlightbackground="#7a1a1a")
                         warn_frame.pack(fill="x", padx=24, pady=(0, 8))
                         tk.Label(warn_frame,
                                  text="⚠  AI FACT-CHECK WARNINGS — Review carefully:",
-                                 bg="#1a0000", fg=ERROR_RED,
+                                 bg="#2a1015", fg=ERROR_RED,
                                  font=("Helvetica", 9, "bold")).pack(anchor="w", padx=8, pady=(6, 2))
                         for w in _warnings_snap[:6]:
-                            tk.Label(warn_frame, text=f"  • {w}", bg="#1a0000",
-                                     fg="#ff8888", font=("Helvetica", 9),
+                            tk.Label(warn_frame, text=f"  • {w}", bg="#2a1015",
+                                     fg="#fca5a5", font=("Helvetica", 9),
                                      wraplength=620, justify="left").pack(anchor="w", padx=8)
-                        tk.Frame(warn_frame, bg="#1a0000", height=6).pack()
+                        tk.Frame(warn_frame, bg="#2a1015", height=6).pack()
 
                     if verification_sources:
-                        src_frame = tk.Frame(dlg, bg="#101010",
-                                             highlightthickness=1, highlightbackground="#333333")
+                        src_frame = tk.Frame(dlg, bg="#111a2b",
+                                             highlightthickness=1, highlightbackground="#293349")
                         src_frame.pack(fill="x", padx=24, pady=(0, 8))
                         tk.Label(src_frame, text=f"SOURCES FOUND — CONFIDENCE: {confidence_label.upper()}",
-                                 bg="#101010", fg=LIGHT_GRAY,
+                                 bg="#111a2b", fg=LIGHT_GRAY,
                                  font=("Helvetica", 9, "bold")).pack(anchor="w", padx=8, pady=(6, 2))
                         for src in verification_sources[:5]:
                             status = "blocked" if src.get("blocked") else src.get("kind", "Source")
                             tk.Label(
                                 src_frame,
                                 text=f"• [{status}] {src.get('title','Source')} — {src.get('url','')}",
-                                bg="#101010", fg="#AAAAAA",
+                                bg="#111a2b", fg="#a8b3c7",
                                 font=("Helvetica", 8),
                                 wraplength=620, justify="left"
                             ).pack(anchor="w", padx=8)
-                        tk.Frame(src_frame, bg="#101010", height=6).pack()
+                        tk.Frame(src_frame, bg="#111a2b", height=6).pack()
 
-                    tk.Frame(dlg, bg="#2a2a2a", height=1).pack(fill="x", padx=24)
+                    tk.Frame(dlg, bg="#232c40", height=1).pack(fill="x", padx=24)
 
                     # Editable caption text area
-                    cap_frame = tk.Frame(dlg, bg="#1a1a1a",
-                                        highlightthickness=1, highlightbackground="#333333")
+                    cap_frame = tk.Frame(dlg, bg="#182236",
+                                        highlightthickness=1, highlightbackground="#293349")
                     cap_frame.pack(fill="both", expand=True, padx=24, pady=14)
-                    cap_txt = tk.Text(cap_frame, bg="#1a1a1a", fg=WHITE,
+                    cap_txt = tk.Text(cap_frame, bg="#182236", fg=WHITE,
                                      insertbackground=WHITE, font=("Helvetica", 12),
                                      bd=0, relief="flat", highlightthickness=0,
                                      wrap="word", height=20)
@@ -2390,10 +2386,10 @@ class App(tk.Tk):
                         dlg.destroy()
                         dialog_done.set()
 
-                    cancel_wrap = tk.Frame(btn_row, bg="#444444", padx=1, pady=1)
+                    cancel_wrap = tk.Frame(btn_row, bg="#5b6578", padx=1, pady=1)
                     cancel_wrap.pack(side="left", fill="x", expand=True, padx=(6, 0))
                     _make_lbtn(cancel_wrap, "✗  CANCEL", _cancel,
-                               bg="#2a2a2a", fg=WHITE, hover_bg="#3a3a3a",
+                               bg="#232c40", fg=WHITE, hover_bg="#333e58",
                                font=("Helvetica", 12, "bold"), pady=14).pack(fill="x")
 
                     dlg.protocol("WM_DELETE_WINDOW", _cancel)
@@ -2774,29 +2770,17 @@ class App(tk.Tk):
     # ── Shared footer ─────────────────────────────────────────────────────────
 
     def _build_footer(self, outer):
-        tk.Frame(outer, bg="#1a1a1a", height=1).pack(fill="x", padx=36, pady=(14, 0))
+        tk.Frame(outer, bg=BORDER, height=1).pack(fill="x", padx=36, pady=(14, 0))
 
         footer_bar = tk.Frame(outer, bg=BG)
-        footer_bar.pack(fill="x", padx=36, pady=(8, 0))
+        footer_bar.pack(fill="x", padx=36, pady=(8, 16))
 
         self._lbl_buffer_status = tk.Label(
             footer_bar, text="", font=("Helvetica", 8), fg=MUTED, bg=BG, anchor="w"
         )
         self._lbl_buffer_status.pack(side="left", fill="x", expand=True)
 
-        settings_border = tk.Frame(footer_bar, bg=CRIMSON, padx=1, pady=1)
-        settings_border.pack(side="right")
-        btn_settings = _make_lbtn(
-            settings_border, "⚙  SETTINGS", self._open_settings,
-            bg="#1a1a1a", fg=WHITE, hover_bg="#2a2a2a",
-            font=("Helvetica", 9, "bold"), pady=7, padx=16
-        )
-        btn_settings.pack()
         self._refresh_buffer_status()
-
-        tk.Frame(outer, bg=CRIMSON, height=2).pack(fill="x", pady=(12, 0))
-        tk.Label(outer, text="VERDICTIN60  —  NEW CASE. EVERY DAY.",
-                 font=("Helvetica", 8, "bold"), fg=CRIMSON, bg=BG).pack(pady=(6, 16))
 
     def _refresh_buffer_status(self):
         s = load_settings()
@@ -2804,7 +2788,7 @@ class App(tk.Tk):
         post_time  = s.get("post_time", "18:00")
         if has_buffer:
             self._lbl_buffer_status.config(
-                text=f"● Buffer ready  ·  posts at {post_time}", fg="#2d8a4e"
+                text=f"● Buffer ready  ·  posts at {post_time}", fg="#22c55e"
             )
         else:
             self._lbl_buffer_status.config(text="○ Buffer not configured", fg=MUTED)
@@ -2861,8 +2845,8 @@ class App(tk.Tk):
         if not raw_caption:
             self._set_status("Paste a raw caption before exporting.", error=True)
             return
-        _lbtn_disable(self._btn_export, MUTED, "#888888")
-        _lbtn_disable(self._btn_select, "#1a1a1a", "#555555")
+        _lbtn_disable(self._btn_export, MUTED, "#94a3b8")
+        _lbtn_disable(self._btn_select, "#182236", "#64748b")
         self._btn_open.pack_forget()
         self._processing = True
         self._progress.start(10)
@@ -3028,8 +3012,8 @@ class App(tk.Tk):
             if self.selected_file:
                 _lbtn_enable(self._btn_export, CRIMSON, WHITE, CRIMSON_HOT)
             else:
-                _lbtn_disable(self._btn_export, MUTED, "#888888")
-            _lbtn_enable(self._btn_select, "#1a1a1a", WHITE, "#2a2a2a")
+                _lbtn_disable(self._btn_export, MUTED, "#94a3b8")
+            _lbtn_enable(self._btn_select, "#182236", WHITE, "#232c40")
         self.after(0, _re_enable_export)
         if success:
             self.after(0, self._show_open_btn)
