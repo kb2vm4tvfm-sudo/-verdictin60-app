@@ -66,7 +66,9 @@ python3 app.py
 
 The Tkinter UI is being refactored around a single design system (`verdictin60_ui/theme.py`): a black/crimson brand palette with semantic status colors, so every screen pulls shared colors, fonts, and spacing instead of hardcoding values. This refactor is inspired by a separate Base44 UI reference, but the app itself remains a Python/Tkinter desktop app, not a React app.
 
-`docs/UI_RECONSTRUCTION_REFERENCE.md` will be added later as the Base44-inspired UI design reference.
+The Base44-inspired UI reconstruction reference is documented in:
+
+- `docs/UI_RECONSTRUCTION_REFERENCE.md`
 
 ## Local-Only Files
 
