@@ -54,6 +54,7 @@ from verdictin60_ui.widgets import (
 from verdictin60_ui.theme import SIDEBAR_BG, SIDEBAR_WIDTH, BORDER
 from verdictin60_ui.components import (
     make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
+    stop_loading_state,
 )
 from verdictin60_ui.settings_tab import SettingsDialog
 from verdictin60_ui.single_export_tab import build_single_tab
@@ -1253,6 +1254,7 @@ class App(tk.Tk):
         threading.Thread(target=_check, daemon=True).start()
 
     def _url_apply_ollama_status(self, ok: bool):
+        stop_loading_state(self._ollama_loading)
         model = get_ai_model("caption")
         speed_mode = get_ai_speed_mode()
         if ok:
@@ -1365,15 +1367,18 @@ class App(tk.Tk):
         self._url_anim_status = text
         if error:
             self._url_anim_enter("error")
-        elif not text:
-            self._url_anim_enter("idle")
-        elif "✅" in text or "Scheduled for" in text:
-            self._url_anim_enter("success")
-        elif "Buffer" in text or "Scheduling" in text:
-            self._url_anim_enter("scheduling")
-        elif text:
-            if self._url_anim_state not in ("processing", "scheduling", "success"):
-                self._url_anim_enter("processing")
+            self._url_show_error(text)
+        else:
+            self._url_hide_error()
+            if not text:
+                self._url_anim_enter("idle")
+            elif "✅" in text or "Scheduled for" in text:
+                self._url_anim_enter("success")
+            elif "Buffer" in text or "Scheduling" in text:
+                self._url_anim_enter("scheduling")
+            elif text:
+                if self._url_anim_state not in ("processing", "scheduling", "success"):
+                    self._url_anim_enter("processing")
         self._url_anim_render()
 
     def _url_anim_enter(self, state):
