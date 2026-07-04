@@ -51,10 +51,13 @@ from verdictin60_ui.widgets import (
     BG, CRIMSON, CRIMSON_HOT, ERROR_RED, WHITE, OFF_WHITE, MUTED, LIGHT_GRAY,
     _make_lbtn, _lbtn_enable, _lbtn_disable,
 )
-from verdictin60_ui.theme import SIDEBAR_BG, SIDEBAR_WIDTH, BORDER
+from verdictin60_ui.theme import (
+    SIDEBAR_BG, SIDEBAR_WIDTH, BORDER, BORDER_LIGHT, INPUT_BG,
+    TEXT_SECONDARY, TEXT_DIM, FONT_FAMILY,
+)
 from verdictin60_ui.components import (
     make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
-    stop_loading_state,
+    stop_loading_state, make_error_banner, make_source_list,
 )
 from verdictin60_ui.settings_tab import SettingsDialog
 from verdictin60_ui.single_export_tab import build_single_tab
@@ -2291,7 +2294,7 @@ class App(tk.Tk):
 
                     dlg = tk.Toplevel(self, bg=BG)
                     dlg.title("REVIEW — VERDICTIN60")
-                    dlg.geometry("700x660")
+                    dlg.geometry("700x680")
                     dlg.resizable(False, False)
                     dlg.grab_set()
 
@@ -2299,66 +2302,65 @@ class App(tk.Tk):
                     dlg.update_idletasks()
                     sw = dlg.winfo_screenwidth()
                     sh = dlg.winfo_screenheight()
-                    dlg.geometry(f"700x660+{(sw-700)//2}+{(sh-660)//2}")
+                    dlg.geometry(f"700x680+{(sw-700)//2}+{(sh-680)//2}")
 
                     # Header
                     tk.Label(dlg, text="REVIEW BEFORE SCHEDULING",
-                             bg=BG, fg=LIGHT_GRAY,
-                             font=("Helvetica", 10, "bold")).pack(pady=(18, 4))
-                    tk.Label(dlg, text=f"✓  Case: {case_for_display}",
+                             bg=BG, fg=TEXT_SECONDARY,
+                             font=(FONT_FAMILY, 10, "bold")).pack(pady=(18, 4))
+                    tk.Label(dlg, text=f"CASE — {case_for_display}",
                              bg=BG, fg=CRIMSON,
-                             font=("Helvetica", 13, "bold")).pack(pady=(0, 6))
+                             font=(FONT_FAMILY, 13, "bold")).pack(pady=(0, 6))
 
-                    # Hallucination warnings (shown in red if any)
+                    # Hallucination warnings (shared error-banner helper)
                     if _warnings_snap:
-                        warn_frame = tk.Frame(dlg, bg="#271512",
-                                             highlightthickness=1, highlightbackground="#7a1a1a")
-                        warn_frame.pack(fill="x", padx=24, pady=(0, 8))
-                        tk.Label(warn_frame,
-                                 text="⚠  AI FACT-CHECK WARNINGS — Review carefully:",
-                                 bg="#271512", fg=ERROR_RED,
-                                 font=("Helvetica", 9, "bold")).pack(anchor="w", padx=8, pady=(6, 2))
-                        for w in _warnings_snap[:6]:
-                            tk.Label(warn_frame, text=f"  • {w}", bg="#271512",
-                                     fg="#dba49e", font=("Helvetica", 9),
-                                     wraplength=620, justify="left").pack(anchor="w", padx=8)
-                        tk.Frame(warn_frame, bg="#271512", height=6).pack()
+                        banner = make_error_banner(
+                            dlg,
+                            "\n".join(f"• {w}" for w in _warnings_snap[:6]),
+                            title="AI fact-check warnings — review carefully",
+                        )
+                        banner.pack(fill="x", padx=24, pady=(0, 8))
 
+                    # Sources found (shared source-list helper)
                     if verification_sources:
-                        src_frame = tk.Frame(dlg, bg="#1a1715",
-                                             highlightthickness=1, highlightbackground="#332f2c")
-                        src_frame.pack(fill="x", padx=24, pady=(0, 8))
-                        tk.Label(src_frame, text=f"SOURCES FOUND — CONFIDENCE: {confidence_label.upper()}",
-                                 bg="#1a1715", fg=LIGHT_GRAY,
-                                 font=("Helvetica", 9, "bold")).pack(anchor="w", padx=8, pady=(6, 2))
-                        for src in verification_sources[:5]:
-                            status = "blocked" if src.get("blocked") else src.get("kind", "Source")
-                            tk.Label(
-                                src_frame,
-                                text=f"• [{status}] {src.get('title','Source')} — {src.get('url','')}",
-                                bg="#1a1715", fg="#a6a29b",
-                                font=("Helvetica", 8),
-                                wraplength=620, justify="left"
-                            ).pack(anchor="w", padx=8)
-                        tk.Frame(src_frame, bg="#1a1715", height=6).pack()
+                        src_panel = make_source_list(
+                            dlg, verification_sources, max_items=5,
+                            heading=f"SOURCES FOUND — CONFIDENCE: {confidence_label.upper()}",
+                        )
+                        src_panel.pack(fill="x", padx=24, pady=(0, 8))
 
-                    tk.Frame(dlg, bg="#2a2725", height=1).pack(fill="x", padx=24)
+                    tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=24)
+
+                    # Caption label + live character counter
+                    cap_label_row = tk.Frame(dlg, bg=BG)
+                    cap_label_row.pack(fill="x", padx=24, pady=(14, 4))
+                    tk.Label(cap_label_row, text="CAPTION", bg=BG, fg=TEXT_SECONDARY,
+                             font=(FONT_FAMILY, 9, "bold")).pack(side="left")
+                    counter_lbl = tk.Label(cap_label_row, text="", bg=BG, fg=TEXT_DIM,
+                                            font=(FONT_FAMILY, 9))
+                    counter_lbl.pack(side="right")
 
                     # Editable caption text area
-                    cap_frame = tk.Frame(dlg, bg="#1f1b18",
-                                        highlightthickness=1, highlightbackground="#332f2c")
-                    cap_frame.pack(fill="both", expand=True, padx=24, pady=14)
-                    cap_txt = tk.Text(cap_frame, bg="#1f1b18", fg=WHITE,
-                                     insertbackground=WHITE, font=("Helvetica", 12),
+                    cap_frame = tk.Frame(dlg, bg=INPUT_BG,
+                                        highlightthickness=1, highlightbackground=BORDER)
+                    cap_frame.pack(fill="both", expand=True, padx=24, pady=(0, 14))
+                    cap_txt = tk.Text(cap_frame, bg=INPUT_BG, fg=WHITE,
+                                     insertbackground=WHITE, font=(FONT_FAMILY, 12),
                                      bd=0, relief="flat", highlightthickness=0,
                                      wrap="word", height=20)
                     cap_txt.pack(fill="both", expand=True, padx=8, pady=8)
                     cap_txt.insert("1.0", cap_for_display)
 
+                    def _update_counter(_event=None):
+                        length = len(cap_txt.get("1.0", "end-1c"))
+                        counter_lbl.config(text=f"{length} characters")
+                    cap_txt.bind("<KeyRelease>", _update_counter)
+                    _update_counter()
+
                     # Empty-caption warning label (hidden until needed)
                     empty_warn = tk.Label(dlg, text="⚠  Caption cannot be empty.",
                                          bg=BG, fg=ERROR_RED,
-                                         font=("Helvetica", 10, "bold"))
+                                         font=(FONT_FAMILY, 10, "bold"))
 
                     # Buttons
                     btn_row = tk.Frame(dlg, bg=BG)
@@ -2369,7 +2371,7 @@ class App(tk.Tk):
                     approve_btn = _make_lbtn(
                         approve_wrap, "✓  APPROVE & SCHEDULE", lambda: None,
                         bg=CRIMSON, fg=WHITE, hover_bg=CRIMSON_HOT,
-                        font=("Helvetica", 12, "bold"), pady=14
+                        font=(FONT_FAMILY, 12, "bold"), pady=14
                     )
                     approve_btn.pack(fill="x")
 
@@ -2391,11 +2393,11 @@ class App(tk.Tk):
                         dlg.destroy()
                         dialog_done.set()
 
-                    cancel_wrap = tk.Frame(btn_row, bg="#5c5850", padx=1, pady=1)
+                    cancel_wrap = tk.Frame(btn_row, bg=TEXT_DIM, padx=1, pady=1)
                     cancel_wrap.pack(side="left", fill="x", expand=True, padx=(6, 0))
                     _make_lbtn(cancel_wrap, "✗  CANCEL", _cancel,
-                               bg="#2a2725", fg=WHITE, hover_bg="#3a3633",
-                               font=("Helvetica", 12, "bold"), pady=14).pack(fill="x")
+                               bg=BORDER, fg=WHITE, hover_bg=BORDER_LIGHT,
+                               font=(FONT_FAMILY, 12, "bold"), pady=14).pack(fill="x")
 
                     dlg.protocol("WM_DELETE_WINDOW", _cancel)
                     dlg.wait_window()
