@@ -41,6 +41,7 @@ ACCENT_MUTED = "#2a0e0d"   # tinted accent background (badges, active nav pill)
 # ── Status colors (semantic — never replaced by ACCENT) ───────────────────────
 SUCCESS      = "#22c55e"   # Verified — emerald green
 SUCCESS_BG   = "#12241a"
+SUCCESS_HOT  = "#1a4a34"   # hover state for success-styled buttons/badges
 WARNING      = "#f59e0b"   # Needs Review — amber
 WARNING_BG   = "#26200c"
 ERROR        = "#c2564c"   # Not Verified — muted red (distinct from ACCENT crimson)

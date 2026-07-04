@@ -3,7 +3,7 @@ from tkinter import ttk
 
 from verdictin60_ui.theme import (
     BG, CARD, CARD_ALT, BORDER, TEXT, TEXT_MUTED,
-    ACCENT, ACCENT_HOT, INPUT_BG, DISABLED, SUCCESS, SUCCESS_BG,
+    ACCENT, ACCENT_HOT, INPUT_BG, DISABLED, SUCCESS, SUCCESS_BG, SUCCESS_HOT,
     FONT_FAMILY, FONT_MONO, SPACE_XS, SPACE_SM, SPACE_LG,
 )
 from verdictin60_ui.components import (
@@ -162,7 +162,7 @@ def build_url_tab(app, parent):
     # ── Retry & Schedule button (hidden until Archive.org poll exhausted) ──
     app._btn_retry_schedule = _make_lbtn(
         inner, "↻  RETRY & SCHEDULE", app._url_retry_schedule,
-        bg=SUCCESS_BG, fg=SUCCESS, hover_bg="#1a4a34", hover_fg=TEXT,
+        bg=SUCCESS_BG, fg=SUCCESS, hover_bg=SUCCESS_HOT, hover_fg=TEXT,
         font=(FONT_FAMILY, 12, "bold"), pady=12
     )
     # Packed/hidden dynamically — stays hidden until UploadPendingError
