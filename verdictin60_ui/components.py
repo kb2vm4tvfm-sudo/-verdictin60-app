@@ -270,6 +270,19 @@ def make_confidence_badge(parent, label, reason=None, bg=CARD):
     return wrap
 
 
+def make_setting_row(parent, label, description=None, bg=CARD, wraplength=480):
+    """One label + muted description row for a settings card, e.g. the rows
+    inside SettingsDialog's segmented panels. Pack the row's control widget
+    (entry/dropdown/etc.) into the returned frame after calling this."""
+    row = tk.Frame(parent, bg=bg)
+    tk.Label(row, text=label, bg=bg, fg=TEXT, font=(FONT_FAMILY, 10, "bold"),
+             anchor="w").pack(fill="x")
+    if description:
+        tk.Label(row, text=description, bg=bg, fg=TEXT_MUTED, font=(FONT_FAMILY, 9),
+                 anchor="w", wraplength=wraplength, justify="left").pack(fill="x", pady=(2, 8))
+    return row
+
+
 def make_toplevel_shell(parent, title, width=520, height=400):
     """A standard Toplevel dialog shell: centered on screen, with a titled
     header row (and close button) and a content body frame, replacing the
