@@ -1,16 +1,23 @@
 import tkinter as tk
 
-BG          = "#000000"
-CRIMSON     = "#940906"
-CRIMSON_HOT = "#6b0604"
-ERROR_RED   = "#ff4444"
-WHITE       = "#FFFFFF"
-OFF_WHITE   = "#e8e8e8"
-MUTED       = "#555555"
-LIGHT_GRAY  = "#888888"
-DARK_CARD   = "#0e0e0e"
-ROW_BG      = "#0d0d0d"
-ROW_ALT     = "#111111"
+from verdictin60_ui.theme import (
+    BG, CARD, CARD_ALT, TEXT, TEXT_OFF, TEXT_MUTED, DISABLED,
+    ACCENT, ACCENT_HOT, ERROR,
+)
+
+# Back-compat aliases used throughout app.py / verdictin60_ui / case_library.py.
+# The names are historic (this app used to have a crimson/red theme) but now
+# resolve to the VerdictIn60 dark-navy/cyan palette defined in theme.py.
+CRIMSON     = ACCENT
+CRIMSON_HOT = ACCENT_HOT
+ERROR_RED   = ERROR
+WHITE       = TEXT
+OFF_WHITE   = TEXT_OFF
+MUTED       = DISABLED
+LIGHT_GRAY  = TEXT_MUTED
+DARK_CARD   = CARD
+ROW_BG      = CARD
+ROW_ALT     = CARD_ALT
 
 
 def _bind_hover(widget, normal_bg, hover_bg, normal_fg=None, hover_fg=None):
@@ -70,6 +77,6 @@ def _lbtn_enable(lbl, bg, fg=WHITE, hover_bg=None):
     lbl.config(bg=bg, fg=fg)
 
 
-def _lbtn_disable(lbl, bg, fg="#888888"):
+def _lbtn_disable(lbl, bg, fg=TEXT_MUTED):
     lbl._lbtn_disabled = True
     lbl.config(bg=bg, fg=fg)
