@@ -1,71 +1,77 @@
 import tkinter as tk
 from tkinter import ttk
 
-from verdictin60_ui.widgets import (
-    BG, CRIMSON, CRIMSON_HOT, WHITE, MUTED, LIGHT_GRAY, _make_lbtn, _lbtn_disable,
+from verdictin60_ui.theme import (
+    BG, CARD, INPUT_BG, BORDER, BORDER_LIGHT,
+    TEXT, TEXT_SECONDARY, TEXT_MUTED,
+    ACCENT, ACCENT_HOT, DISABLED,
+    FONT_FAMILY,
 )
+from verdictin60_ui.components import make_card, card_body, make_badge
+from verdictin60_ui.widgets import _make_lbtn, _lbtn_disable
+
+PAD = 36
+
+
+def _field_label(parent, text):
+    return tk.Label(parent, text=text, bg=BG, fg=TEXT_SECONDARY,
+                     font=(FONT_FAMILY, 8, "bold"))
 
 
 def build_single_tab(app, parent):
-    PAD = 36
-
     # ── Select file button ────────────────────────────────────────────────
     app._select_wrap = select_wrap = tk.Frame(parent, bg=BG)
     select_wrap.pack(padx=PAD, fill="x", pady=(22, 0))
     # 1px crimson border via Frame wrapper
-    select_border = tk.Frame(select_wrap, bg=CRIMSON, padx=1, pady=1)
+    select_border = tk.Frame(select_wrap, bg=ACCENT, padx=1, pady=1)
     select_border.pack(fill="x")
     app._btn_select = _make_lbtn(
         select_border, "▶   SELECT CASE FILE", app._pick_file,
-        bg="#1f1b18", fg=WHITE, hover_bg="#2a2725",
-        font=("Helvetica", 13, "bold"), pady=16, padx=22, anchor="w"
+        bg=INPUT_BG, fg=TEXT, hover_bg=BORDER,
+        font=(FONT_FAMILY, 13, "bold"), pady=16, padx=22, anchor="w"
     )
     app._btn_select.pack(fill="x")
-    tk.Frame(select_wrap, bg=CRIMSON, width=4).place(x=0, y=0, relheight=1.0)
+    tk.Frame(select_wrap, bg=ACCENT, width=4).place(x=0, y=0, relheight=1.0)
 
     # ── File card (hidden until chosen) ───────────────────────────────────
     app._card_frame = tk.Frame(parent, bg=BG)
-    card_inner = tk.Frame(app._card_frame, bg="#1f1b18",
-                          highlightbackground="#2a2725", highlightthickness=1)
-    card_inner.pack(fill="x", padx=PAD, pady=(12, 0))
-    tk.Frame(card_inner, bg=CRIMSON, height=2).pack(fill="x")
-    card_body = tk.Frame(card_inner, bg="#1f1b18")
-    card_body.pack(fill="x", padx=16, pady=12)
-    tk.Label(card_body, text="▶", font=("Helvetica", 18, "bold"),
-             fg=CRIMSON, bg="#1f1b18").grid(row=0, column=0, rowspan=2, padx=(0, 14))
-    app._lbl_filename = tk.Label(card_body, text="",
-                                  font=("Helvetica", 12, "bold"),
-                                  fg=WHITE, bg="#1f1b18", anchor="w")
+    file_card = make_card(app._card_frame, padx=16, pady=12, bg=INPUT_BG, hover=False)
+    file_card.pack(fill="x", padx=PAD, pady=(12, 0))
+    tk.Frame(file_card, bg=ACCENT, height=2).pack(fill="x", before=card_body(file_card))
+    body = card_body(file_card)
+    tk.Label(body, text="▶", font=(FONT_FAMILY, 18, "bold"),
+             fg=ACCENT, bg=INPUT_BG).grid(row=0, column=0, rowspan=2, padx=(0, 14))
+    app._lbl_filename = tk.Label(body, text="",
+                                  font=(FONT_FAMILY, 12, "bold"),
+                                  fg=TEXT, bg=INPUT_BG, anchor="w")
     app._lbl_filename.grid(row=0, column=1, sticky="w")
-    tk.Label(card_body, text="READY FOR PROCESSING",
-             font=("Helvetica", 8, "bold"), fg=CRIMSON,
-             bg="#1f1b18", anchor="w").grid(row=1, column=1, sticky="w")
-    card_body.columnconfigure(1, weight=1)
+    make_badge(body, "READY FOR PROCESSING", status="success").grid(
+        row=1, column=1, sticky="w", pady=(4, 0))
+    body.columnconfigure(1, weight=1)
 
     # ── Case Title ────────────────────────────────────────────────────────
     title_frame = tk.Frame(parent, bg=BG)
     title_frame.pack(padx=PAD, fill="x", pady=(16, 0))
-    tk.Label(title_frame, text="CASE TITLE", font=("Helvetica", 8, "bold"),
-             fg="#a6a29b", bg=BG).pack(anchor="w")
-    app._title_entry = tk.Entry(title_frame, textvariable=tk.StringVar(),
-             font=("Helvetica", 11), fg=WHITE, bg="#1f1b18",
-             insertbackground=WHITE, relief="flat",
-             highlightthickness=1, highlightbackground="#2a2725",
-             highlightcolor=CRIMSON)
-    app._title_var = app._title_entry["textvariable"] = tk.StringVar()
-    app._title_entry.config(textvariable=app._title_var)
+    _field_label(title_frame, "CASE TITLE").pack(anchor="w")
+    app._title_var = tk.StringVar()
+    app._title_entry = tk.Entry(
+        title_frame, textvariable=app._title_var,
+        font=(FONT_FAMILY, 11), fg=TEXT, bg=INPUT_BG,
+        insertbackground=TEXT, relief="flat",
+        highlightthickness=1, highlightbackground=BORDER,
+        highlightcolor=ACCENT,
+    )
     app._title_entry.pack(fill="x", ipady=8, pady=(6, 0))
 
     # ── Raw Caption ───────────────────────────────────────────────────────
     caption_frame = tk.Frame(parent, bg=BG)
     caption_frame.pack(padx=PAD, fill="x", pady=(14, 0))
-    tk.Label(caption_frame, text="RAW CAPTION", font=("Helvetica", 8, "bold"),
-             fg="#a6a29b", bg=BG).pack(anchor="w")
+    _field_label(caption_frame, "RAW CAPTION").pack(anchor="w")
     app._caption_text = tk.Text(
-        caption_frame, height=8, font=("Helvetica", 10),
-        fg=WHITE, bg="#1f1b18", insertbackground=WHITE,
-        relief="flat", highlightthickness=1, highlightbackground="#2a2725",
-        highlightcolor=CRIMSON, wrap="word", padx=8, pady=8
+        caption_frame, height=8, font=(FONT_FAMILY, 10),
+        fg=TEXT, bg=INPUT_BG, insertbackground=TEXT,
+        relief="flat", highlightthickness=1, highlightbackground=BORDER,
+        highlightcolor=ACCENT, wrap="word", padx=8, pady=8
     )
     app._caption_text.pack(fill="x", pady=(6, 0))
 
@@ -74,24 +80,29 @@ def build_single_tab(app, parent):
     export_wrap.pack(padx=PAD, fill="x", pady=(20, 0))
     app._btn_export = _make_lbtn(
         export_wrap, "EXPORT FINISHED REEL", app._start_export,
-        bg=MUTED, fg="#8a8680", hover_bg=CRIMSON_HOT, hover_fg=WHITE,
-        normal_fg="#8a8680", font=("Helvetica", 13, "bold"), pady=16, padx=20
+        bg=DISABLED, fg=TEXT_MUTED, hover_bg=ACCENT_HOT, hover_fg=TEXT,
+        normal_fg=TEXT_MUTED, font=(FONT_FAMILY, 13, "bold"), pady=16, padx=20
     )
-    _lbtn_disable(app._btn_export, MUTED, "#8a8680")
+    _lbtn_disable(app._btn_export, DISABLED, TEXT_MUTED)
     app._btn_export.pack(fill="x")
 
     # ── Case file animation canvas ────────────────────────────────────────
+    # Kept as a plain bordered Canvas rather than make_card: app.py's
+    # _draw_anim() dynamically flashes this canvas's own highlightthickness/
+    # highlightbackground on a successful export, so it must own its border
+    # rather than nesting inside a second bordered frame.
+    _field_label(parent, "EXPORT STATUS").pack(anchor="w", padx=PAD, pady=(18, 6))
     app._anim_canvas = tk.Canvas(
-        parent, bg="#141210", height=170,
-        highlightthickness=1, highlightbackground="#2a2725"
+        parent, bg=CARD, height=170,
+        highlightthickness=1, highlightbackground=BORDER
     )
-    app._anim_canvas.pack(padx=PAD, fill="x", pady=(18, 0))
+    app._anim_canvas.pack(padx=PAD, fill="x")
     app._anim_canvas.bind("<Configure>", lambda e: app._anim_render())
 
     # Hidden progress/dot/status kept for compat with existing logic
     app._progress = ttk.Progressbar(parent, orient="horizontal", mode="indeterminate")
     app._dot = tk.Label(parent, text="●", fg=BG, bg=BG)
-    app._lbl_status = tk.Label(parent, text="", fg=LIGHT_GRAY, bg=BG)
+    app._lbl_status = tk.Label(parent, text="", fg=TEXT_MUTED, bg=BG)
 
     # Animation state
     app._anim_state   = "idle"   # idle | processing | scheduling | success | error
@@ -103,6 +114,6 @@ def build_single_tab(app, parent):
     # ── Open folder button ────────────────────────────────────────────────
     app._btn_open = _make_lbtn(
         parent, "▶   OPEN OUTPUT FOLDER", app._open_output_folder,
-        bg="#2a2725", fg="#a6a29b", hover_bg="#3a3633", hover_fg=WHITE,
-        normal_fg="#a6a29b", font=("Helvetica", 10, "bold"), pady=10, padx=20
+        bg=BORDER, fg=TEXT_SECONDARY, hover_bg=BORDER_LIGHT, hover_fg=TEXT,
+        normal_fg=TEXT_SECONDARY, font=(FONT_FAMILY, 10, "bold"), pady=10, padx=20
     )
