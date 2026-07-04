@@ -5,9 +5,8 @@ from verdictin60_ui.theme import (
     ACCENT, ACCENT_HOT, ERROR,
 )
 
-# Back-compat aliases used throughout app.py / verdictin60_ui / case_library.py.
-# The names are historic (this app used to have a crimson/red theme) but now
-# resolve to the VerdictIn60 dark-navy/cyan palette defined in theme.py.
+# Back-compat aliases used throughout app.py / verdictin60_ui / case_library.py,
+# resolving to the official black/crimson VerdictIn60 palette defined in theme.py.
 CRIMSON     = ACCENT
 CRIMSON_HOT = ACCENT_HOT
 ERROR_RED   = ERROR

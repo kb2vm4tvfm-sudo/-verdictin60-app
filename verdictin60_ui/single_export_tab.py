@@ -17,7 +17,7 @@ def build_single_tab(app, parent):
     select_border.pack(fill="x")
     app._btn_select = _make_lbtn(
         select_border, "▶   SELECT CASE FILE", app._pick_file,
-        bg="#182236", fg=WHITE, hover_bg="#232c40",
+        bg="#1f1b18", fg=WHITE, hover_bg="#2a2725",
         font=("Helvetica", 13, "bold"), pady=16, padx=22, anchor="w"
     )
     app._btn_select.pack(fill="x")
@@ -25,32 +25,32 @@ def build_single_tab(app, parent):
 
     # ── File card (hidden until chosen) ───────────────────────────────────
     app._card_frame = tk.Frame(parent, bg=BG)
-    card_inner = tk.Frame(app._card_frame, bg="#182236",
-                          highlightbackground="#232c40", highlightthickness=1)
+    card_inner = tk.Frame(app._card_frame, bg="#1f1b18",
+                          highlightbackground="#2a2725", highlightthickness=1)
     card_inner.pack(fill="x", padx=PAD, pady=(12, 0))
     tk.Frame(card_inner, bg=CRIMSON, height=2).pack(fill="x")
-    card_body = tk.Frame(card_inner, bg="#182236")
+    card_body = tk.Frame(card_inner, bg="#1f1b18")
     card_body.pack(fill="x", padx=16, pady=12)
     tk.Label(card_body, text="▶", font=("Helvetica", 18, "bold"),
-             fg=CRIMSON, bg="#182236").grid(row=0, column=0, rowspan=2, padx=(0, 14))
+             fg=CRIMSON, bg="#1f1b18").grid(row=0, column=0, rowspan=2, padx=(0, 14))
     app._lbl_filename = tk.Label(card_body, text="",
                                   font=("Helvetica", 12, "bold"),
-                                  fg=WHITE, bg="#182236", anchor="w")
+                                  fg=WHITE, bg="#1f1b18", anchor="w")
     app._lbl_filename.grid(row=0, column=1, sticky="w")
     tk.Label(card_body, text="READY FOR PROCESSING",
              font=("Helvetica", 8, "bold"), fg=CRIMSON,
-             bg="#182236", anchor="w").grid(row=1, column=1, sticky="w")
+             bg="#1f1b18", anchor="w").grid(row=1, column=1, sticky="w")
     card_body.columnconfigure(1, weight=1)
 
     # ── Case Title ────────────────────────────────────────────────────────
     title_frame = tk.Frame(parent, bg=BG)
     title_frame.pack(padx=PAD, fill="x", pady=(16, 0))
     tk.Label(title_frame, text="CASE TITLE", font=("Helvetica", 8, "bold"),
-             fg="#a8b3c7", bg=BG).pack(anchor="w")
+             fg="#a6a29b", bg=BG).pack(anchor="w")
     app._title_entry = tk.Entry(title_frame, textvariable=tk.StringVar(),
-             font=("Helvetica", 11), fg=WHITE, bg="#182236",
+             font=("Helvetica", 11), fg=WHITE, bg="#1f1b18",
              insertbackground=WHITE, relief="flat",
-             highlightthickness=1, highlightbackground="#232c40",
+             highlightthickness=1, highlightbackground="#2a2725",
              highlightcolor=CRIMSON)
     app._title_var = app._title_entry["textvariable"] = tk.StringVar()
     app._title_entry.config(textvariable=app._title_var)
@@ -60,11 +60,11 @@ def build_single_tab(app, parent):
     caption_frame = tk.Frame(parent, bg=BG)
     caption_frame.pack(padx=PAD, fill="x", pady=(14, 0))
     tk.Label(caption_frame, text="RAW CAPTION", font=("Helvetica", 8, "bold"),
-             fg="#a8b3c7", bg=BG).pack(anchor="w")
+             fg="#a6a29b", bg=BG).pack(anchor="w")
     app._caption_text = tk.Text(
         caption_frame, height=8, font=("Helvetica", 10),
-        fg=WHITE, bg="#182236", insertbackground=WHITE,
-        relief="flat", highlightthickness=1, highlightbackground="#232c40",
+        fg=WHITE, bg="#1f1b18", insertbackground=WHITE,
+        relief="flat", highlightthickness=1, highlightbackground="#2a2725",
         highlightcolor=CRIMSON, wrap="word", padx=8, pady=8
     )
     app._caption_text.pack(fill="x", pady=(6, 0))
@@ -74,16 +74,16 @@ def build_single_tab(app, parent):
     export_wrap.pack(padx=PAD, fill="x", pady=(20, 0))
     app._btn_export = _make_lbtn(
         export_wrap, "EXPORT FINISHED REEL", app._start_export,
-        bg=MUTED, fg="#94a3b8", hover_bg=CRIMSON_HOT, hover_fg=WHITE,
-        normal_fg="#94a3b8", font=("Helvetica", 13, "bold"), pady=16, padx=20
+        bg=MUTED, fg="#8a8680", hover_bg=CRIMSON_HOT, hover_fg=WHITE,
+        normal_fg="#8a8680", font=("Helvetica", 13, "bold"), pady=16, padx=20
     )
-    _lbtn_disable(app._btn_export, MUTED, "#94a3b8")
+    _lbtn_disable(app._btn_export, MUTED, "#8a8680")
     app._btn_export.pack(fill="x")
 
     # ── Case file animation canvas ────────────────────────────────────────
     app._anim_canvas = tk.Canvas(
-        parent, bg="#101625", height=170,
-        highlightthickness=1, highlightbackground="#232c40"
+        parent, bg="#141210", height=170,
+        highlightthickness=1, highlightbackground="#2a2725"
     )
     app._anim_canvas.pack(padx=PAD, fill="x", pady=(18, 0))
     app._anim_canvas.bind("<Configure>", lambda e: app._anim_render())
@@ -103,6 +103,6 @@ def build_single_tab(app, parent):
     # ── Open folder button ────────────────────────────────────────────────
     app._btn_open = _make_lbtn(
         parent, "▶   OPEN OUTPUT FOLDER", app._open_output_folder,
-        bg="#232c40", fg="#a8b3c7", hover_bg="#333e58", hover_fg=WHITE,
-        normal_fg="#a8b3c7", font=("Helvetica", 10, "bold"), pady=10, padx=20
+        bg="#2a2725", fg="#a6a29b", hover_bg="#3a3633", hover_fg=WHITE,
+        normal_fg="#a6a29b", font=("Helvetica", 10, "bold"), pady=10, padx=20
     )

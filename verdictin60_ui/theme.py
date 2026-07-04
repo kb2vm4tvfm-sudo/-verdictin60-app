@@ -1,44 +1,50 @@
-"""VerdictIn60 design system — single source of truth for the dark navy/cyan theme.
+"""VerdictIn60 design system — single source of truth for the black/crimson brand theme.
 
 All screens should pull colors, fonts and spacing from here (directly or via the
 re-exports in verdictin60_ui.widgets) instead of hardcoding hex values, so the
 whole app can be re-themed from one place.
+
+Palette: near-black surfaces, warm off-white text, and a single deep-crimson
+accent reserved for active/selected state and primary actions. Status colors
+(verified/needs-review/not-verified) stay semantic and are never replaced by
+the brand accent.
 """
 
 # ── Surfaces ──────────────────────────────────────────────────────────────────
-BG           = "#0a0e17"   # app background
-SIDEBAR_BG   = "#0a0e17"   # sidebar background (separated from content by BORDER)
-SURFACE      = "#0d1220"   # top bar / footer background
-CARD         = "#101625"   # card / panel background
-CARD_ALT     = "#121a2b"   # alternating row / secondary panel background
-CARD_HOVER   = "#141c2e"   # hover state for cards / rows
-INPUT_BG     = "#182236"   # text entries, textareas, secondary buttons
+BG           = "#000000"   # app background — true black
+SIDEBAR_BG   = "#0b0a09"   # very dark charcoal, separated from content by BORDER
+SURFACE      = "#0e0d0c"   # top bar / footer background
+CARD         = "#141210"   # card / panel background — dark charcoal
+CARD_ALT     = "#1a1715"   # alternating row / secondary panel background
+CARD_HOVER   = "#211d1a"   # hover state for cards / rows
+PANEL        = "#181513"   # panels — slightly lighter than cards
+INPUT_BG     = "#1f1b18"   # text entries, textareas, secondary buttons
 
 # ── Borders ───────────────────────────────────────────────────────────────────
-BORDER       = "#232c40"
-BORDER_LIGHT = "#333e58"
+BORDER       = "#2a2725"   # soft graphite
+BORDER_LIGHT = "#3a3633"
 
 # ── Text ──────────────────────────────────────────────────────────────────────
-TEXT           = "#f8fafc"   # primary text (was WHITE)
-TEXT_OFF       = "#e2e8f0"   # slightly muted primary text (was OFF_WHITE)
-TEXT_SECONDARY = "#a8b3c7"   # secondary labels (was #AAAAAA)
-TEXT_MUTED     = "#94a3b8"   # muted body text (was LIGHT_GRAY)
-TEXT_DIM       = "#5b6578"   # dim hints / idle placeholders (was #444444)
-DISABLED       = "#64748b"   # disabled control fg/bg base (was MUTED)
+TEXT           = "#EAE9E4"   # primary text — warm off-white (brand color)
+TEXT_OFF       = "#d9d7d0"   # slightly muted primary text
+TEXT_SECONDARY = "#a6a29b"   # secondary labels — muted gray
+TEXT_MUTED     = "#8a8680"   # muted body text
+TEXT_DIM       = "#5c5850"   # dim hints / idle placeholders
+DISABLED       = "#6b675f"   # disabled control fg/bg base
 
-# ── Accent (cyan → blue, the VerdictIn60 brand color) ─────────────────────────
-ACCENT       = "#38bdf8"
-ACCENT_HOT   = "#0ea5e9"
-ACCENT_DEEP  = "#3b82f6"
-ACCENT_MUTED = "#0b3350"   # tinted accent background (badges, active nav pill)
+# ── Accent (deep crimson, the VerdictIn60 signature color) ────────────────────
+ACCENT       = "#920805"   # primary brand accent
+ACCENT_HOT   = "#b30a06"   # hover state
+ACCENT_DEEP  = "#6e0604"   # pressed / deep state
+ACCENT_MUTED = "#2a0e0d"   # tinted accent background (badges, active nav pill)
 
-# ── Status colors ─────────────────────────────────────────────────────────────
-SUCCESS      = "#22c55e"
-SUCCESS_BG   = "#0f2e1c"
-WARNING      = "#f59e0b"
-WARNING_BG   = "#241a0a"
-ERROR        = "#f87171"
-ERROR_BG     = "#2a1015"
+# ── Status colors (semantic — never replaced by ACCENT) ───────────────────────
+SUCCESS      = "#22c55e"   # Verified — emerald green
+SUCCESS_BG   = "#12241a"
+WARNING      = "#f59e0b"   # Needs Review — amber
+WARNING_BG   = "#26200c"
+ERROR        = "#c2564c"   # Not Verified — muted red (distinct from ACCENT crimson)
+ERROR_BG     = "#271512"
 
 # ── Fonts ─────────────────────────────────────────────────────────────────────
 FONT_FAMILY      = "Helvetica"
