@@ -58,6 +58,7 @@ from verdictin60_ui.theme import (
 from verdictin60_ui.components import (
     make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
     stop_loading_state, make_error_banner, make_source_list, make_card, card_body,
+    make_confidence_badge,
 )
 from verdictin60_ui.settings_tab import SettingsDialog
 from verdictin60_ui.single_export_tab import build_single_tab
@@ -1922,42 +1923,33 @@ class App(tk.Tk):
                         def _show_research_stop_dialog():
                             dlg = tk.Toplevel(self, bg=BG)
                             dlg.title("RESEARCH NEEDED — VERDICTIN60")
-                            dlg.geometry("620x330")
+                            dlg.geometry("620x380")
                             dlg.resizable(False, False)
                             dlg.grab_set()
                             dlg.update_idletasks()
                             sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
-                            dlg.geometry(f"620x330+{(sw-620)//2}+{(sh-330)//2}")
+                            dlg.geometry(f"620x380+{(sw-620)//2}+{(sh-380)//2}")
 
-                            tk.Label(
+                            tk.Label(dlg, text="RESEARCH NEEDED", bg=BG, fg=TEXT_SECONDARY,
+                                     font=(FONT_FAMILY, 10, "bold")).pack(pady=(20, 4))
+                            tk.Label(dlg, text=f"CASE — {title}", bg=BG, fg=CRIMSON,
+                                     font=(FONT_FAMILY, 13, "bold")).pack(pady=(0, 12))
+
+                            badge = make_confidence_badge(dlg, confidence_label, confidence_reason)
+                            badge.pack(padx=24, pady=(0, 12))
+
+                            banner = make_error_banner(
                                 dlg,
-                                text="RESEARCH CONFIDENCE TOO LOW",
-                                bg=BG, fg=CRIMSON,
-                                font=("Helvetica", 14, "bold")
-                            ).pack(pady=(22, 8))
-                            tk.Label(
-                                dlg,
-                                text=(
-                                    "The app could not find enough accessible official records "
-                                    "or reputable reporting to verify this case to the VerdictIn60 standard."
+                                (
+                                    "The app could not find enough accessible official records or "
+                                    "reputable reporting to verify this case to the VerdictIn60 standard. "
+                                    "No caption was generated or sent to review. You can paste a caption "
+                                    "you have already checked into BUFFER CAPTION and use that, or try "
+                                    "this link again later."
                                 ),
-                                bg=BG, fg=OFF_WHITE,
-                                font=("Helvetica", 11),
-                                wraplength=540,
-                                justify="center"
-                            ).pack(pady=(0, 12))
-                            tk.Label(
-                                dlg,
-                                text=(
-                                    "No caption was generated or sent to review. "
-                                    "You can paste a caption you have already checked into BUFFER CAPTION "
-                                    "and use that, or try this link again later."
-                                ),
-                                bg=BG, fg=LIGHT_GRAY,
-                                font=("Helvetica", 10),
-                                wraplength=540,
-                                justify="center"
-                            ).pack(pady=(0, 18))
+                                title="Research confidence too low — no caption generated",
+                            )
+                            banner.pack(fill="x", padx=24, pady=(0, 18))
 
                             def _close():
                                 dlg.destroy()
@@ -1966,7 +1958,7 @@ class App(tk.Tk):
                             _make_lbtn(
                                 dlg, "OK", _close,
                                 bg=CRIMSON, fg=WHITE, hover_bg=CRIMSON_HOT,
-                                font=("Helvetica", 11, "bold"), pady=10
+                                font=(FONT_FAMILY, 11, "bold"), pady=10
                             ).pack(fill="x", padx=190)
                             dlg.protocol("WM_DELETE_WINDOW", _close)
                             dlg.wait_window()
@@ -2319,11 +2311,14 @@ class App(tk.Tk):
                         )
                         banner.pack(fill="x", padx=24, pady=(0, 8))
 
-                    # Sources found (shared source-list helper)
+                    # Sources found (shared source-list + confidence-badge helpers)
                     if verification_sources:
+                        badge = make_confidence_badge(dlg, confidence_label, confidence_reason, bg=BG)
+                        badge.pack(fill="x", padx=24, pady=(0, 6), anchor="w")
+
                         src_panel = make_source_list(
                             dlg, verification_sources, max_items=5,
-                            heading=f"SOURCES FOUND — CONFIDENCE: {confidence_label.upper()}",
+                            heading="SOURCES FOUND",
                         )
                         src_panel.pack(fill="x", padx=24, pady=(0, 8))
 
