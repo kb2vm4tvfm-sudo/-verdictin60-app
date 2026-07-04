@@ -44,6 +44,17 @@ This roadmap is a living guide. Keep changes practical and focused on making the
 - Add a repeatable build checklist.
 - Add a release checklist for local testing, credentials, app launch, export, and scheduling.
 
+## Research Hub (in progress)
+
+- Backend investigation pipeline (`verdictin60_core/research_hub.py`): free-form
+  clue parsing, AI case identification (never invents facts, states low
+  confidence explicitly), and Wayback Machine archive recovery for blocked
+  sources, on top of `research.py`'s hardened source-gathering pipeline
+  (strict timeouts, source/time budget, paywall/PDF/Yahoo/Brave-429 handling).
+- Still needed: the Research Hub Tkinter tab itself (search panel, results
+  view, AI research assistant chat, and the Save/Export/Copy actions from
+  issue #52) — not yet wired into `app.py`.
+
 ## Nice-To-Have Ideas
 
 - A local dashboard showing service health.
