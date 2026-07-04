@@ -4,8 +4,10 @@ from tkinter import ttk
 from verdictin60_core.settings import load_settings, save_settings
 from verdictin60_core.ai import AI_SPEED_MODES
 from verdictin60_ui.widgets import BG, CRIMSON, CRIMSON_HOT, WHITE, LIGHT_GRAY, _make_lbtn
-from verdictin60_ui.theme import CARD, BORDER, TEXT_SECONDARY, TEXT_MUTED, INPUT_BG
-from verdictin60_ui.components import make_segmented_tabs, make_card, card_body
+from verdictin60_ui.theme import CARD, BORDER, TEXT_MUTED, INPUT_BG, SPACE_MD
+from verdictin60_ui.components import (
+    make_segmented_tabs, make_card, card_body, make_badge, make_setting_row,
+)
 
 SETTINGS_TABS = [
     ("general", "General"),
@@ -29,6 +31,7 @@ class SettingsDialog(tk.Toplevel):
 
         s = load_settings()
         self._vars = {}
+        self._style = self._build_combobox_style()
 
         # Top accent bar
         tk.Frame(self, bg=CRIMSON, height=3).pack(fill="x")
@@ -49,11 +52,13 @@ class SettingsDialog(tk.Toplevel):
         panels_host = tk.Frame(self, bg=BG)
         panels_host.pack(fill="both", expand=True, padx=30, pady=(14, 0))
 
+        active_speed_mode = self._resolve_speed_mode(s)
+
         self._panels = {
             "general":      self._build_general(panels_host, s),
             "appearance":   self._build_appearance(panels_host),
-            "ai":           self._build_ai(panels_host, s),
-            "models":       self._build_models(panels_host),
+            "ai":           self._build_ai(panels_host, active_speed_mode),
+            "models":       self._build_models(panels_host, active_speed_mode),
             "verification": self._build_verification(panels_host),
             "exports":      self._build_exports(panels_host, s),
             "advanced":     self._build_advanced(panels_host, s),
@@ -79,8 +84,37 @@ class SettingsDialog(tk.Toplevel):
         self.update_idletasks()
         pw, ph = parent.winfo_width(), parent.winfo_height()
         px, py = parent.winfo_rootx(), parent.winfo_rooty()
-        dw, dh = 620, 600
+        dw, dh = 660, 660
         self.geometry(f"{dw}x{dh}+{px+(pw-dw)//2}+{py+(ph-dh)//2}")
+
+    # ── One-time setup ───────────────────────────────────────────────────────
+
+    def _build_combobox_style(self):
+        """A dropdown style scoped to this dialog only (named style, so it
+        never touches the default TCombobox look used elsewhere, e.g.
+        case_library.py's status dropdown)."""
+        style = ttk.Style(self)
+        style.configure(
+            "VerdictIn60.TCombobox",
+            fieldbackground=INPUT_BG, background=INPUT_BG, foreground=WHITE,
+            arrowcolor=TEXT_MUTED, bordercolor=BORDER,
+            lightcolor=INPUT_BG, darkcolor=INPUT_BG,
+        )
+        style.map(
+            "VerdictIn60.TCombobox",
+            fieldbackground=[("readonly", INPUT_BG)],
+            foreground=[("readonly", WHITE)],
+            selectbackground=[("readonly", INPUT_BG)],
+            selectforeground=[("readonly", WHITE)],
+        )
+        return style
+
+    def _resolve_speed_mode(self, s):
+        current_speed = s.get("ai_speed_mode", "")
+        if current_speed not in AI_SPEED_MODES:
+            current_ai = s.get("ai_model", "qwen3:14b")
+            current_speed = "Best Accuracy" if current_ai == "qwen3:32b" else "Balanced"
+        return current_speed or "Balanced"
 
     # ── Panel builders ────────────────────────────────────────────────────────
 
@@ -91,13 +125,21 @@ class SettingsDialog(tk.Toplevel):
     def _build_general(self, parent, s):
         panel = tk.Frame(parent, bg=BG)
         self._section_label(panel, "BUFFER")
-        rows = [
-            ("buffer_key",        "Buffer API Key",              s.get("buffer_key", ""),        True),
-            ("buffer_channel_id", "Buffer Instagram Channel ID", s.get("buffer_channel_id", ""), False),
-            ("post_time",         "Daily Post Time (HH:MM)",     s.get("post_time", "18:00"),    False),
+        card = make_card(panel)
+        card.pack(fill="x")
+        body = card_body(card)
+        fields = [
+            ("buffer_key", "Buffer API Key",
+             "Authenticates VerdictIn60 with the Buffer API when scheduling posts.",
+             s.get("buffer_key", ""), True),
+            ("buffer_channel_id", "Buffer Instagram Channel ID",
+             "The Buffer channel connected to the destination Instagram account.",
+             s.get("buffer_channel_id", ""), False),
+            ("post_time", "Daily Post Time (HH:MM)",
+             "Local time each scheduled case is posted through Buffer.",
+             s.get("post_time", "18:00"), False),
         ]
-        for key, label, value, masked in rows:
-            self._make_field(panel, key, label, value, masked)
+        self._make_field_rows(body, fields)
         return panel
 
     def _build_appearance(self, parent):
@@ -105,51 +147,60 @@ class SettingsDialog(tk.Toplevel):
         card = make_card(panel)
         card.pack(fill="x")
         body = card_body(card)
-        tk.Label(body, text="VerdictIn60 Dark", font=("Helvetica", 11, "bold"),
-                 fg=WHITE, bg=CARD, anchor="w").pack(fill="x")
+        head = tk.Frame(body, bg=CARD)
+        head.pack(fill="x")
+        tk.Label(head, text="VerdictIn60 Dark", font=("Helvetica", 11, "bold"),
+                 fg=WHITE, bg=CARD, anchor="w").pack(side="left")
+        make_badge(head, "ACTIVE", status="success").pack(side="left", padx=(8, 0))
         tk.Label(
             body,
             text="The official black / crimson VerdictIn60 theme is applied across the whole app. "
                  "There are no other themes to switch between yet.",
             font=("Helvetica", 9), fg=TEXT_MUTED, bg=CARD, anchor="w",
             wraplength=520, justify="left",
-        ).pack(fill="x", pady=(4, 0))
+        ).pack(fill="x", pady=(6, 0))
         return panel
 
-    def _build_ai(self, parent, s):
+    def _build_ai(self, parent, active_speed_mode):
         panel = tk.Frame(parent, bg=BG)
         self._section_label(panel, "AI  —  OLLAMA SETTINGS")
-        tk.Label(panel, text="AI SPEED MODE", font=("Helvetica", 8, "bold"),
-                 fg=TEXT_SECONDARY, bg=BG, anchor="w", justify="left").pack(fill="x", pady=(4, 3))
+        card = make_card(panel)
+        card.pack(fill="x")
+        body = card_body(card)
+        row = make_setting_row(
+            body, "AI Speed Mode",
+            "Controls which Ollama models are used to identify, caption, and verify cases.",
+        )
+        row.pack(fill="x")
         ai_speed_options = ["Fast", "Balanced", "Best Accuracy"]
-        current_speed = s.get("ai_speed_mode", "")
-        if current_speed not in AI_SPEED_MODES:
-            current_ai = s.get("ai_model", "qwen3:14b")
-            current_speed = "Best Accuracy" if current_ai == "qwen3:32b" else "Balanced"
-        self._ai_speed_var = tk.StringVar(value=current_speed or "Balanced")
+        self._ai_speed_var = tk.StringVar(value=active_speed_mode)
         ai_dropdown = ttk.Combobox(
-            panel, textvariable=self._ai_speed_var,
+            row, textvariable=self._ai_speed_var,
             values=ai_speed_options, state="readonly",
-            font=("Helvetica", 11)
+            font=("Helvetica", 11), style="VerdictIn60.TCombobox",
         )
         ai_dropdown.pack(fill="x", ipady=4)
         return panel
 
-    def _build_models(self, parent):
+    def _build_models(self, parent, active_speed_mode):
         panel = tk.Frame(parent, bg=BG)
         self._section_label(panel, "MODELS USED BY EACH SPEED MODE")
         for mode, cfg in AI_SPEED_MODES.items():
             card = make_card(panel)
             card.pack(fill="x", pady=(0, 8))
             body = card_body(card)
-            tk.Label(body, text=mode, font=("Helvetica", 10, "bold"),
-                     fg=WHITE, bg=CARD, anchor="w").pack(fill="x")
+            head = tk.Frame(body, bg=CARD)
+            head.pack(fill="x")
+            tk.Label(head, text=mode, font=("Helvetica", 10, "bold"),
+                     fg=WHITE, bg=CARD, anchor="w").pack(side="left")
+            if mode == active_speed_mode:
+                make_badge(head, "CURRENT", status="info").pack(side="left", padx=(8, 0))
             tk.Label(
                 body,
                 text=f"Identify: {cfg.get('identify', '—')}   ·   Caption: {cfg.get('caption', '—')}"
                      f"   ·   Verify: {cfg.get('verify', '—')}",
                 font=("Helvetica", 9), fg=TEXT_MUTED, bg=CARD, anchor="w",
-            ).pack(fill="x", pady=(2, 0))
+            ).pack(fill="x", pady=(4, 0))
         return panel
 
     def _build_verification(self, parent):
@@ -157,8 +208,11 @@ class SettingsDialog(tk.Toplevel):
         card = make_card(panel)
         card.pack(fill="x")
         body = card_body(card)
-        tk.Label(body, text="Source Verification", font=("Helvetica", 11, "bold"),
-                 fg=WHITE, bg=CARD, anchor="w").pack(fill="x")
+        head = tk.Frame(body, bg=CARD)
+        head.pack(fill="x")
+        tk.Label(head, text="Source Verification", font=("Helvetica", 11, "bold"),
+                 fg=WHITE, bg=CARD, anchor="w").pack(side="left")
+        make_badge(head, "AUTOMATIC", status="info").pack(side="left", padx=(8, 0))
         tk.Label(
             body,
             text="Every imported case is checked against independent sources before a caption "
@@ -166,38 +220,60 @@ class SettingsDialog(tk.Toplevel):
                  "no user-configurable options yet.",
             font=("Helvetica", 9), fg=TEXT_MUTED, bg=CARD, anchor="w",
             wraplength=520, justify="left",
-        ).pack(fill="x", pady=(4, 0))
+        ).pack(fill="x", pady=(6, 0))
         return panel
 
     def _build_exports(self, parent, s):
         panel = tk.Frame(parent, bg=BG)
         self._section_label(panel, "INTERNET ARCHIVE  —  VIDEO HOSTING")
-        rows = [
-            ("ia_access_key", "IA Access Key", s.get("ia_access_key", ""), False),
-            ("ia_secret_key", "IA Secret Key", s.get("ia_secret_key", ""), True),
+        card = make_card(panel)
+        card.pack(fill="x")
+        body = card_body(card)
+        fields = [
+            ("ia_access_key", "IA Access Key",
+             "Public access key used to upload finished reels to Internet Archive.",
+             s.get("ia_access_key", ""), False),
+            ("ia_secret_key", "IA Secret Key",
+             "Secret key paired with the access key above. Kept masked on screen.",
+             s.get("ia_secret_key", ""), True),
         ]
-        for key, label, value, masked in rows:
-            self._make_field(panel, key, label, value, masked)
+        self._make_field_rows(body, fields)
         return panel
 
     def _build_advanced(self, parent, s):
         panel = tk.Frame(parent, bg=BG)
         self._section_label(panel, "PREFERRED BROWSER FOR COOKIES")
+        card = make_card(panel)
+        card.pack(fill="x")
+        body = card_body(card)
+        row = make_setting_row(
+            body, "Browser",
+            "Browser VerdictIn60 reads cookies from when importing sources that require a login.",
+        )
+        row.pack(fill="x")
         browser_options = ["chrome", "safari", "firefox"]
         self._browser_var = tk.StringVar(value=s.get("preferred_browser", "chrome"))
         browser_dropdown = ttk.Combobox(
-            panel, textvariable=self._browser_var,
+            row, textvariable=self._browser_var,
             values=browser_options, state="readonly",
-            font=("Helvetica", 11)
+            font=("Helvetica", 11), style="VerdictIn60.TCombobox",
         )
         browser_dropdown.pack(fill="x", ipady=4)
         return panel
 
-    # ── Shared field widget ───────────────────────────────────────────────────
+    # ── Shared field widgets ──────────────────────────────────────────────────
 
-    def _make_field(self, parent, key, label, value, masked):
-        tk.Label(parent, text=label.upper(), font=("Helvetica", 8, "bold"),
-                 fg=TEXT_SECONDARY, bg=BG, anchor="w", justify="left").pack(fill="x", pady=(10, 3))
+    def _make_field_rows(self, body, fields):
+        """Render a list of (key, label, description, value, masked) settings
+        as label + description + entry rows, with a divider between rows."""
+        for i, (key, label, description, value, masked) in enumerate(fields):
+            if i > 0:
+                tk.Frame(body, bg=BORDER, height=1).pack(fill="x", pady=(0, SPACE_MD))
+            row = make_setting_row(body, label, description)
+            row.pack(fill="x")
+            self._make_entry(row, key, value, masked)
+
+    def _make_entry(self, parent, key, value, masked):
         e = tk.Entry(parent, show="*" if masked else "",
                      font=("Helvetica", 11), fg=WHITE, bg=INPUT_BG,
                      insertbackground=WHITE, relief="flat",
