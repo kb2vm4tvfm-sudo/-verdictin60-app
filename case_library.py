@@ -18,6 +18,7 @@ from pathlib import Path
 from verdictin60_ui.widgets import BG, CRIMSON, CRIMSON_HOT, DARK_CARD, WHITE, MUTED, LIGHT_GRAY, ERROR_RED
 from verdictin60_ui.theme import (
     CARD, CARD_ALT, BORDER, BORDER_LIGHT, SURFACE, INPUT_BG, TEXT_DIM, TEXT_SECONDARY,
+    SUCCESS,
 )
 from verdictin60_ui.components import make_badge, make_empty_state
 
@@ -1088,7 +1089,7 @@ class LibraryTab:
             img.thumbnail((CARD_W, CARD_THUMB_H), Image.LANCZOS)
             photo = ImageTk.PhotoImage(img)
             self._thumb_refs[cid] = photo
-            lbl.config(image=photo, bg="#0e0d0c")
+            lbl.config(image=photo, bg=SURFACE)
             self.library._log(f"[LIBRARY] _load_thumb cid={cid} OK")
         except Exception as e:
             import traceback
@@ -1330,7 +1331,7 @@ class CaseDetailDialog(tk.Toplevel):
                          side="left", fill="x", expand=True)
         else:
             tk.Label(tlc, text="No events recorded.",
-                     bg=CARD, fg=BORDER,
+                     bg=CARD, fg=TEXT_DIM,
                      font=("Helvetica", 9)).pack(padx=12, pady=8, anchor="w")
         tk.Frame(tlc, bg=CARD, height=4).pack()
 
@@ -1372,7 +1373,7 @@ class CaseDetailDialog(tk.Toplevel):
     def _save_caption(self):
         cap = self._cap.get("1.0", "end").strip()
         self.library.update_caption(self.case["id"], cap)
-        self._char_lbl.config(text="✓  Saved", fg="#22c55e")
+        self._char_lbl.config(text="✓  Saved", fg=SUCCESS)
         self.after(2200, self._upd_chars)
         self.after(2200, lambda: self._char_lbl.config(fg=MUTED))
 

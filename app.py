@@ -53,7 +53,8 @@ from verdictin60_ui.widgets import (
 )
 from verdictin60_ui.theme import (
     SIDEBAR_BG, SIDEBAR_WIDTH, BORDER, BORDER_LIGHT, INPUT_BG,
-    CARD_ALT, CARD_HOVER, TEXT_SECONDARY, TEXT_DIM, FONT_FAMILY,
+    CARD_ALT, CARD_HOVER, TEXT_SECONDARY, TEXT_DIM, TEXT_MUTED, FONT_FAMILY,
+    CARD, SURFACE, SUCCESS, WARNING_BG,
 )
 from verdictin60_ui.components import (
     make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
@@ -117,7 +118,7 @@ DEFAULT_HASHTAGS = "#truecrime #verdictin60 #truecrimecommunity #coldcase #crime
 # ── Background drawing ────────────────────────────────────────────────────────
 
 def _draw_watermarks(canvas, w, h):
-    c = "#1f1b18"
+    c = INPUT_BG
     for x1, y1, x2, y2 in [(28, 60, 68, 100), (20, 50, 30, 60), (66, 98, 76, 108)]:
         canvas.create_rectangle(x1, y1, x2, y2, fill=c, outline="")
     canvas.create_rectangle(20, 95, 80, 102, fill=c, outline="")
@@ -140,7 +141,7 @@ def _draw_watermarks(canvas, w, h):
 def _draw_grain(canvas, w, h):
     for gy in range(0, h, 18):
         for gx in range(0, w, 18):
-            shade = "#141210" if (gx // 18 + gy // 18) % 2 == 0 else "#0e0d0c"
+            shade = CARD if (gx // 18 + gy // 18) % 2 == 0 else SURFACE
             canvas.create_rectangle(gx, gy, gx+1, gy+1, fill=shade, outline="")
 
 
@@ -388,7 +389,7 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
         if 0.34 < phase < 0.60:
             c.configure(highlightbackground=CRIMSON, highlightthickness=2)
         else:
-            c.configure(highlightbackground="#2a2725", highlightthickness=1)
+            c.configure(highlightbackground=BORDER, highlightthickness=1)
         gh_w, gh_h = 80, 24
         ghx1, ghy1 = cx - gh_w // 2, gavel_y
         ghx2, ghy2 = cx + gh_w // 2, gavel_y + gh_h
@@ -419,7 +420,7 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
                       width=cw - 40)
     elif state == "idle" and not status_txt:
         c.create_text(cx, fy2 + 20, text=idle_hint,
-                      font=("Courier", 9), fill="#5c5850")
+                      font=("Courier", 9), fill=TEXT_DIM)
     elif state == "error" and status_txt:
         clean = status_txt.lstrip("✗✓ ")
         c.create_text(cx, fy2 + 20, text=clean,
@@ -585,44 +586,44 @@ class App(tk.Tk):
         overall = "Attention Required" if attention else "Healthy"
         self._recovery_overall.config(
             text=f"Application Health: {overall}",
-            fg=ERROR_RED if attention else "#22c55e"
+            fg=ERROR_RED if attention else SUCCESS
         )
         for issue in issues:
             self._recovery_add_row(issue)
 
     def _recovery_add_row(self, issue: dict):
         severity = issue.get("severity", "ok")
-        accent = "#22c55e" if severity == "ok" else CRIMSON
+        accent = SUCCESS if severity == "ok" else CRIMSON
         row = tk.Frame(
-            self._recovery_results, bg="#1a1715",
-            highlightthickness=1, highlightbackground="#2a2725"
+            self._recovery_results, bg=CARD_ALT,
+            highlightthickness=1, highlightbackground=BORDER
         )
         row.pack(fill="x", pady=(0, 8))
 
-        left = tk.Frame(row, bg="#1a1715")
+        left = tk.Frame(row, bg=CARD_ALT)
         left.pack(side="left", fill="both", expand=True, padx=12, pady=10)
-        header_row = tk.Frame(left, bg="#1a1715")
+        header_row = tk.Frame(left, bg=CARD_ALT)
         header_row.pack(anchor="w", fill="x")
         tk.Label(header_row, text=f"{issue['area']}  ·  {issue['status']}",
-                 bg="#1a1715", fg=accent,
+                 bg=CARD_ALT, fg=accent,
                  font=("Helvetica", 10, "bold")).pack(side="left")
         make_badge(
             header_row, "OK" if severity == "ok" else severity.upper(),
             status="success" if severity == "ok" else ("warning" if severity == "warning" else "error"),
         ).pack(side="left", padx=(8, 0))
         tk.Label(left, text=issue["problem"],
-                 bg="#1a1715", fg=WHITE,
+                 bg=CARD_ALT, fg=WHITE,
                  font=("Helvetica", 10), wraplength=470,
                  justify="left").pack(anchor="w", pady=(3, 0))
         tk.Label(left, text=issue["why"],
-                 bg="#1a1715", fg=LIGHT_GRAY,
+                 bg=CARD_ALT, fg=LIGHT_GRAY,
                  font=("Helvetica", 9), wraplength=470,
                  justify="left").pack(anchor="w", pady=(3, 0))
 
         if issue.get("action"):
             _make_lbtn(
                 row, "REPAIR", lambda i=issue: self._recovery_confirm_repair(i),
-                bg="#1f1b18", fg=WHITE, hover_bg="#2a2725",
+                bg=INPUT_BG, fg=WHITE, hover_bg=BORDER,
                 font=("Helvetica", 9, "bold"), pady=8, padx=14
             ).pack(side="right", padx=12)
 
@@ -659,7 +660,7 @@ class App(tk.Tk):
 
         def _approve():
             result, verification = self._recovery_apply_repair(issue)
-            result_lbl.config(text=f"{result}\n{verification}", fg="#22c55e")
+            result_lbl.config(text=f"{result}\n{verification}", fg=SUCCESS)
             log_recovery_event(issue["problem"], issue["area"], True, result, verification)
             self.after(600, self._recovery_run_scan)
 
@@ -674,7 +675,7 @@ class App(tk.Tk):
         ).pack(side="left", fill="x", expand=True, padx=(0, 6))
         _make_lbtn(
             btn_row, "CANCEL", _cancel,
-            bg="#2a2725", fg=WHITE, hover_bg="#3a3633",
+            bg=BORDER, fg=WHITE, hover_bg=BORDER_LIGHT,
             font=("Helvetica", 10, "bold"), pady=10
         ).pack(side="left", fill="x", expand=True, padx=(6, 0))
 
@@ -757,7 +758,7 @@ class App(tk.Tk):
             )
         self._batch_status_lbl.config(
             text=f"Loaded {len(rows)} DOCX queue item{'s' if len(rows) != 1 else ''}.",
-            fg="#22c55e"
+            fg=SUCCESS
         )
         self._refresh_batch_ui()
 
@@ -821,7 +822,7 @@ class App(tk.Tk):
         if not new_rows:
             self._batch_status_lbl.config(
                 text="All cases in the document are already scheduled in Buffer.",
-                fg="#22c55e"
+                fg=SUCCESS
             )
             return
 
@@ -943,7 +944,7 @@ class App(tk.Tk):
         if n == 0:
             self._batch_empty_lbl.pack(pady=30)
             self._btn_schedule_all.config(text="SCHEDULE ALL  ( 0 videos )")
-            _lbtn_disable(self._btn_schedule_all, MUTED, "#8a8680")
+            _lbtn_disable(self._btn_schedule_all, MUTED, TEXT_MUTED)
         else:
             self._batch_empty_lbl.pack_forget()
             self._btn_schedule_all.config(
@@ -952,7 +953,7 @@ class App(tk.Tk):
             if not self._batch_running:
                 _lbtn_enable(self._btn_schedule_all, CRIMSON, WHITE, CRIMSON_HOT)
             else:
-                _lbtn_disable(self._btn_schedule_all, MUTED, "#8a8680")
+                _lbtn_disable(self._btn_schedule_all, MUTED, TEXT_MUTED)
 
     # ── Batch processing ──────────────────────────────────────────────────────
 
@@ -983,7 +984,7 @@ class App(tk.Tk):
                 )
                 return
         self._batch_running = True
-        _lbtn_disable(self._btn_schedule_all, MUTED, "#8a8680")
+        _lbtn_disable(self._btn_schedule_all, MUTED, TEXT_MUTED)
         self._batch_status_lbl.config(text="🔴  Processing batch...", fg=LIGHT_GRAY)
         threading.Thread(target=self._run_batch, daemon=True).start()
 
@@ -1049,7 +1050,7 @@ class App(tk.Tk):
 
             if not has_buffer:
                 self._library_save_case(title, output_path, status="Ready")
-                set_row_status(f"✓  Saved as {output_path.name}", "#22c55e")
+                set_row_status(f"✓  Saved as {output_path.name}", SUCCESS)
                 continue
 
             # Step 2: caption. DOCX captions are final Buffer captions.
@@ -1123,7 +1124,7 @@ class App(tk.Tk):
                     self._library_save_case(title, output_path, status="Scheduled",
                                             archive_url=video_url, caption=caption,
                                             scheduled_date=due, buffer_post_id=post_id)
-                    set_row_status(f"✅  Scheduled for {due_fmt}", "#22c55e")
+                    set_row_status(f"✅  Scheduled for {due_fmt}", SUCCESS)
                 elif "message" in data:
                     set_row_status(f"✓  Saved  ·  Buffer: {data['message']}", ERROR_RED)
                 else:
@@ -1135,7 +1136,7 @@ class App(tk.Tk):
         self._batch_running = False
         self.after(0, lambda: self._batch_status_lbl.config(
             text=f"✅  Batch complete — {len(rows)} video{'s' if len(rows)!=1 else ''} processed.",
-            fg="#22c55e"
+            fg=SUCCESS
         ))
         self.after(0, self._refresh_batch_ui)
 
@@ -1159,7 +1160,7 @@ class App(tk.Tk):
             if plat == detected:
                 btn.config(bg=CRIMSON, fg=WHITE)
             else:
-                btn.config(bg="#1f1b18", fg="#6b675f")
+                btn.config(bg=INPUT_BG, fg=MUTED)
 
     def _url_prepare_next_import(self):
         self._url_entry.delete(0, "end")
@@ -1187,13 +1188,13 @@ class App(tk.Tk):
     def _show_model_banner(self, model: str):
         if hasattr(self, "_model_banner") and self._model_banner.winfo_exists():
             return
-        self._model_banner = tk.Frame(self._outer, bg="#26200c",
+        self._model_banner = tk.Frame(self._outer, bg=WARNING_BG,
                                       highlightthickness=1, highlightbackground=CRIMSON)
         self._model_banner.pack(fill="x", padx=30, pady=(8, 0), before=self._single_frame)
-        inner = tk.Frame(self._model_banner, bg="#26200c")
+        inner = tk.Frame(self._model_banner, bg=WARNING_BG)
         inner.pack(fill="x", padx=12, pady=8)
         tk.Label(inner, text=f"⚠  Recommended AI model ({model}) is not installed.",
-                 bg="#26200c", fg="#fbbf24",
+                 bg=WARNING_BG, fg="#fbbf24",
                  font=("Helvetica", 10)).pack(side="left")
         _make_lbtn(inner, "Install Model",
                    lambda: self._install_ai_model(model),
@@ -1209,13 +1210,13 @@ class App(tk.Tk):
                  font=("Helvetica", 13, "bold")).pack(pady=(20, 6))
         tk.Label(win, text="This may take several minutes — do not close this window.",
                  bg=BG, fg=LIGHT_GRAY, font=("Helvetica", 10)).pack()
-        log_frame = tk.Frame(win, bg="#141210", highlightthickness=1,
+        log_frame = tk.Frame(win, bg=CARD, highlightthickness=1,
                              highlightbackground="#332f2c")
         log_frame.pack(fill="both", expand=True, padx=20, pady=14)
-        log_txt = tk.Text(log_frame, bg="#141210", fg=LIGHT_GRAY, font=("Courier", 9),
+        log_txt = tk.Text(log_frame, bg=CARD, fg=LIGHT_GRAY, font=("Courier", 9),
                           bd=0, wrap="word", state="disabled", highlightthickness=0)
         log_txt.pack(fill="both", expand=True, padx=8, pady=8)
-        done_lbl = tk.Label(win, text="", bg=BG, fg="#22c55e",
+        done_lbl = tk.Label(win, text="", bg=BG, fg=SUCCESS,
                             font=("Helvetica", 11, "bold"))
         done_lbl.pack(pady=(0, 14))
 
@@ -1238,7 +1239,7 @@ class App(tk.Tk):
                 proc.wait()
                 if proc.returncode == 0:
                     self.after(0, lambda: done_lbl.config(
-                        text=f"✅  {model} is ready!", fg="#22c55e"))
+                        text=f"✅  {model} is ready!", fg=SUCCESS))
                     if hasattr(self, "_model_banner") and self._model_banner.winfo_exists():
                         self.after(0, self._model_banner.destroy)
                 else:
@@ -1260,13 +1261,13 @@ class App(tk.Tk):
         model = get_ai_model("caption")
         speed_mode = get_ai_speed_mode()
         if ok:
-            self._ollama_dot.config(fg="#22c55e")
+            self._ollama_dot.config(fg=SUCCESS)
             self._ollama_status_lbl.config(
-                text=f"Ollama ready — {speed_mode} mode ({model})", fg="#22c55e"
+                text=f"Ollama ready — {speed_mode} mode ({model})", fg=SUCCESS
             )
             self._btn_install_ollama.pack_forget()
-            self._url_ai_badge.config(fg="#22c55e")
-            self._url_cap_badge.config(fg="#22c55e")
+            self._url_ai_badge.config(fg=SUCCESS)
+            self._url_cap_badge.config(fg=SUCCESS)
         else:
             self._ollama_dot.config(fg=ERROR_RED)
             self._ollama_status_lbl.config(
@@ -1274,8 +1275,8 @@ class App(tk.Tk):
                 fg=LIGHT_GRAY
             )
             self._btn_install_ollama.pack(side="left", padx=(10, 0))
-            self._url_ai_badge.config(fg="#5c5850")
-            self._url_cap_badge.config(fg="#5c5850")
+            self._url_ai_badge.config(fg=TEXT_DIM)
+            self._url_cap_badge.config(fg=TEXT_DIM)
 
     def _url_install_ollama(self):
         """Open a top-level progress window and run Ollama install + model pull."""
@@ -1287,14 +1288,14 @@ class App(tk.Tk):
                  font=("Helvetica", 13, "bold")).pack(pady=(20, 6))
         tk.Label(win, text="This may take a few minutes — do not close this window.",
                  bg=BG, fg=LIGHT_GRAY, font=("Helvetica", 10)).pack()
-        log_frame = tk.Frame(win, bg="#141210",
+        log_frame = tk.Frame(win, bg=CARD,
                              highlightthickness=1, highlightbackground="#332f2c")
         log_frame.pack(fill="both", expand=True, padx=20, pady=14)
-        log_txt = tk.Text(log_frame, bg="#141210", fg=LIGHT_GRAY,
+        log_txt = tk.Text(log_frame, bg=CARD, fg=LIGHT_GRAY,
                           font=("Courier", 9), bd=0, wrap="word",
                           state="disabled", highlightthickness=0)
         log_txt.pack(fill="both", expand=True, padx=8, pady=8)
-        done_lbl = tk.Label(win, text="", bg=BG, fg="#22c55e",
+        done_lbl = tk.Label(win, text="", bg=BG, fg=SUCCESS,
                             font=("Helvetica", 11, "bold"))
         done_lbl.pack(pady=(0, 14))
 
@@ -1357,7 +1358,7 @@ class App(tk.Tk):
                         return
 
                 self.after(0, lambda: done_lbl.config(
-                    text="✅  Ollama installed and AI models ready!", fg="#22c55e"))
+                    text="✅  Ollama installed and AI models ready!", fg=SUCCESS))
                 self.after(0, self._url_check_ollama_status)
             except Exception as e:
                 self.after(0, lambda: done_lbl.config(
@@ -1444,8 +1445,8 @@ class App(tk.Tk):
         # check_ollama() has a 3-second network timeout — run it on the thread,
         # NOT here on the main thread where it would freeze the UI.
         print("[URL IMPORT] Handing off to background thread")
-        _lbtn_disable(self._btn_url_import, MUTED, "#8a8680")
-        _lbtn_disable(self._btn_use_my_caption, "#1f1b18", "#6b675f")
+        _lbtn_disable(self._btn_url_import, MUTED, TEXT_MUTED)
+        _lbtn_disable(self._btn_use_my_caption, INPUT_BG, MUTED)
         self._url_set_status("⏳  Fetching video metadata...")
         threading.Thread(
             target=self._run_url_import,
@@ -1466,7 +1467,7 @@ class App(tk.Tk):
         self._url_install_btn = _make_lbtn(
             self._url_anim_canvas.master, "Install yt-dlp",
             self._url_install_ytdlp,
-            bg="#1f1b18", fg=LIGHT_GRAY, hover_bg="#2a2725",
+            bg=INPUT_BG, fg=LIGHT_GRAY, hover_bg=BORDER,
             font=("Helvetica", 10), pady=8, padx=16
         )
         self._url_install_btn.pack(pady=(0, 8))
@@ -1499,7 +1500,7 @@ class App(tk.Tk):
         if not self._pending_upload_url:
             return
         self._btn_retry_schedule.pack_forget()
-        _lbtn_disable(self._btn_url_import, MUTED, "#8a8680")
+        _lbtn_disable(self._btn_url_import, MUTED, TEXT_MUTED)
         url      = self._pending_upload_url
         caption  = self._pending_caption
         due_dt   = self._pending_due_dt
@@ -1583,7 +1584,7 @@ class App(tk.Tk):
             print("[URL IMPORT] Re-enabling button")
             self.after(0, lambda: _lbtn_enable(self._btn_url_import, CRIMSON, WHITE, CRIMSON_HOT))
             self.after(0, lambda: _lbtn_enable(
-                self._btn_use_my_caption, "#1f1b18", LIGHT_GRAY, "#2a2725"
+                self._btn_use_my_caption, INPUT_BG, LIGHT_GRAY, BORDER
             ))
 
         try:
@@ -1808,10 +1809,10 @@ class App(tk.Tk):
                         tk.Label(dlg, text=hint, bg=BG, fg=LIGHT_GRAY,
                                  font=("Helvetica", 10)).pack(pady=(0, 10))
 
-                        name_frame = tk.Frame(dlg, bg="#1f1b18",
+                        name_frame = tk.Frame(dlg, bg=INPUT_BG,
                                              highlightthickness=1, highlightbackground="#332f2c")
                         name_frame.pack(fill="x", padx=24)
-                        name_entry = tk.Entry(name_frame, bg="#1f1b18", fg=WHITE,
+                        name_entry = tk.Entry(name_frame, bg=INPUT_BG, fg=WHITE,
                                               insertbackground=WHITE, font=("Helvetica", 13),
                                               bd=0, relief="flat", highlightthickness=0)
                         name_entry.pack(fill="x", padx=10, pady=10)
@@ -1831,8 +1832,8 @@ class App(tk.Tk):
                         _make_lbtn(btn_row, "CONTINUE", _ok, bg=CRIMSON, fg=WHITE,
                                    hover_bg=CRIMSON_HOT, font=("Helvetica", 11, "bold"),
                                    pady=10).pack(side="left", fill="x", expand=True, padx=(0, 6))
-                        _make_lbtn(btn_row, "CANCEL", _cancel, bg="#2a2725", fg=WHITE,
-                                   hover_bg="#3a3633", font=("Helvetica", 11, "bold"),
+                        _make_lbtn(btn_row, "CANCEL", _cancel, bg=BORDER, fg=WHITE,
+                                   hover_bg=BORDER_LIGHT, font=("Helvetica", 11, "bold"),
                                    pady=10).pack(side="left", fill="x", expand=True)
                         dlg.protocol("WM_DELETE_WINDOW", _cancel)
                         dlg.wait_window()
@@ -2788,7 +2789,7 @@ class App(tk.Tk):
         post_time  = s.get("post_time", "18:00")
         if has_buffer:
             self._lbl_buffer_status.config(
-                text=f"● Buffer ready  ·  posts at {post_time}", fg="#22c55e"
+                text=f"● Buffer ready  ·  posts at {post_time}", fg=SUCCESS
             )
         else:
             self._lbl_buffer_status.config(text="○ Buffer not configured", fg=MUTED)
@@ -2845,8 +2846,8 @@ class App(tk.Tk):
         if not raw_caption:
             self._set_status("Paste a raw caption before exporting.", error=True)
             return
-        _lbtn_disable(self._btn_export, MUTED, "#8a8680")
-        _lbtn_disable(self._btn_select, "#1f1b18", "#6b675f")
+        _lbtn_disable(self._btn_export, MUTED, TEXT_MUTED)
+        _lbtn_disable(self._btn_select, INPUT_BG, MUTED)
         self._btn_open.pack_forget()
         self._processing = True
         self._progress.start(10)
@@ -3012,8 +3013,8 @@ class App(tk.Tk):
             if self.selected_file:
                 _lbtn_enable(self._btn_export, CRIMSON, WHITE, CRIMSON_HOT)
             else:
-                _lbtn_disable(self._btn_export, MUTED, "#8a8680")
-            _lbtn_enable(self._btn_select, "#1f1b18", WHITE, "#2a2725")
+                _lbtn_disable(self._btn_export, MUTED, TEXT_MUTED)
+            _lbtn_enable(self._btn_select, INPUT_BG, WHITE, BORDER)
         self.after(0, _re_enable_export)
         if success:
             self.after(0, self._show_open_btn)
