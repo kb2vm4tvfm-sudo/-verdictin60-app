@@ -109,7 +109,7 @@ class SettingsDialog(tk.Toplevel):
                  fg=WHITE, bg=CARD, anchor="w").pack(fill="x")
         tk.Label(
             body,
-            text="The dark navy / cyan VerdictIn60 theme is applied across the whole app. "
+            text="The official black / crimson VerdictIn60 theme is applied across the whole app. "
                  "There are no other themes to switch between yet.",
             font=("Helvetica", 9), fg=TEXT_MUTED, bg=CARD, anchor="w",
             wraplength=520, justify="left",

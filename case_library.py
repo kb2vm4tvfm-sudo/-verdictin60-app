@@ -18,20 +18,20 @@ from pathlib import Path
 from verdictin60_ui.widgets import BG, CRIMSON, CRIMSON_HOT, DARK_CARD, WHITE, MUTED, LIGHT_GRAY, ERROR_RED
 
 STATUS_COLORS = {
-    "Draft":     "#64748b",
-    "Ready":     "#0ea5e9",
+    "Draft":     "#6b675f",
+    "Ready":     "#7c8a99",
     "Scheduled": "#f59e0b",
     "Published": "#22c55e",
-    "Failed":    "#ef4444",
-    "Archived":  "#7c85a3",
+    "Failed":    "#c2413a",
+    "Archived":  "#726d64",
 }
 STATUS_FG = {
-    "Draft":     "#94a3b8",
-    "Ready":     "#7dd3fc",
+    "Draft":     "#8a8680",
+    "Ready":     "#a9b4bd",
     "Scheduled": "#fbbf24",
     "Published": "#4ade80",
-    "Failed":    "#fca5a5",
-    "Archived":  "#b8bcd1",
+    "Failed":    "#dba49e",
+    "Archived":  "#b8b4ab",
 }
 ALL_STATUSES = ["Draft", "Ready", "Scheduled", "Published", "Failed", "Archived"]
 
@@ -913,25 +913,25 @@ class LibraryTab:
         fb.pack(fill="x", padx=PAD, pady=(14, 0))
         self._filter_btns: dict[str, tk.Label] = {}
         for label in ["Active", "Scheduled", "Published", "All"]:
-            btn = tk.Label(fb, text=label, bg="#121a2b", fg=MUTED,
+            btn = tk.Label(fb, text=label, bg="#1a1715", fg=MUTED,
                            font=("Helvetica", 9, "bold"),
                            padx=11, pady=6, cursor="hand2")
             btn.pack(side="left", padx=(0, 3))
             btn.bind("<Button-1>", lambda e, s=label: self._set_filter(s))
-            _hover_label(btn, "#121a2b", "#182236", MUTED, LIGHT_GRAY)
+            _hover_label(btn, "#1a1715", "#1f1b18", MUTED, LIGHT_GRAY)
             self._filter_btns[label] = btn
         self._filter_btns["Active"].config(bg=CRIMSON, fg=WHITE)
 
         # ── Search ────────────────────────────────────────────────────────────
-        sw = tk.Frame(self.parent, bg="#121a2b",
-                      highlightthickness=1, highlightbackground="#232c40")
+        sw = tk.Frame(self.parent, bg="#1a1715",
+                      highlightthickness=1, highlightbackground="#2a2725")
         sw.pack(fill="x", padx=PAD, pady=(8, 0))
-        tk.Label(sw, text="⌕", bg="#121a2b", fg=LIGHT_GRAY,
+        tk.Label(sw, text="⌕", bg="#1a1715", fg=LIGHT_GRAY,
                  font=("Helvetica", 14)).pack(side="left", padx=(10, 3))
         self._search_var = tk.StringVar()
         self._search_var.trace_add("write", self._on_search)
         tk.Entry(sw, textvariable=self._search_var,
-                 bg="#121a2b", fg=WHITE, insertbackground=WHITE,
+                 bg="#1a1715", fg=WHITE, insertbackground=WHITE,
                  font=("Helvetica", 11), bd=0, relief="flat",
                  highlightthickness=0).pack(fill="x", side="left",
                  expand=True, padx=(0, 10), pady=8)
@@ -972,7 +972,7 @@ class LibraryTab:
     def _set_filter(self, s: str):
         self._filter = s
         for k, btn in self._filter_btns.items():
-            btn.config(bg=CRIMSON if k == s else "#121a2b",
+            btn.config(bg=CRIMSON if k == s else "#1a1715",
                        fg=WHITE   if k == s else MUTED)
         self.refresh()
 
@@ -997,7 +997,7 @@ class LibraryTab:
         if not cases:
             tk.Label(self._grid,
                      text="No cases yet.\n\nExport a reel and it will appear here automatically.",
-                     font=("Helvetica", 11), fg="#232c40", bg=BG,
+                     font=("Helvetica", 11), fg="#2a2725", bg=BG,
                      justify="center").grid(row=0, column=0, pady=80, padx=80)
             return
 
@@ -1021,16 +1021,16 @@ class LibraryTab:
 
         card = tk.Frame(self._grid, bg=DARK_CARD,
                         width=CARD_W, height=CARD_H,
-                        highlightthickness=1, highlightbackground="#232c40",
+                        highlightthickness=1, highlightbackground="#2a2725",
                         cursor="hand2")
         card.pack_propagate(False)
         card.grid_propagate(False)
 
         # Thumbnail area (portrait 9:16)
-        tf = tk.Frame(card, bg="#0d1220", width=CARD_W, height=CARD_THUMB_H)
+        tf = tk.Frame(card, bg="#0e0d0c", width=CARD_W, height=CARD_THUMB_H)
         tf.pack(fill="x")
         tf.pack_propagate(False)
-        tl = tk.Label(tf, bg="#0d1220")
+        tl = tk.Label(tf, bg="#0e0d0c")
         tl.place(relwidth=1.0, relheight=1.0)
 
         thumb_path = self.library._resolve_path(thumbp) if thumbp else Path("")
@@ -1040,7 +1040,7 @@ class LibraryTab:
             # Placeholder with crimson stripe
             pl = tk.Frame(tf, bg=CRIMSON, width=3)
             pl.place(x=0, y=0, relheight=1.0)
-            tk.Label(tf, text="▶", fg="#1a2233", bg="#0d1220",
+            tk.Label(tf, text="▶", fg="#1a2233", bg="#0e0d0c",
                      font=("Helvetica", 26, "bold")).place(
                          relx=0.5, rely=0.5, anchor="center")
 
@@ -1064,12 +1064,12 @@ class LibraryTab:
                 sfmt = dt.strftime("%b %-d, %Y")
             except Exception:
                 sfmt = sched[:10]
-            tk.Label(body, text=sfmt, bg=DARK_CARD, fg="#333e58",
+            tk.Label(body, text=sfmt, bg=DARK_CARD, fg="#3a3633",
                      font=("Helvetica", 8)).pack(anchor="w", pady=(1, 0))
 
         # Hover + click (bind recursively so children don't swallow events)
         def _enter(_): card.config(highlightbackground=CRIMSON)
-        def _leave(_): card.config(highlightbackground="#232c40")
+        def _leave(_): card.config(highlightbackground="#2a2725")
         self._bind_card(card, cid, _enter, _leave)
         return card
 
@@ -1091,7 +1091,7 @@ class LibraryTab:
             img.thumbnail((CARD_W, CARD_THUMB_H), Image.LANCZOS)
             photo = ImageTk.PhotoImage(img)
             self._thumb_refs[cid] = photo
-            lbl.config(image=photo, bg="#0d1220")
+            lbl.config(image=photo, bg="#0e0d0c")
             self.library._log(f"[LIBRARY] _load_thumb cid={cid} OK")
         except Exception as e:
             import traceback
@@ -1100,7 +1100,7 @@ class LibraryTab:
     # ── Context menu ──────────────────────────────────────────────────────────
 
     def _ctx_menu(self, event, cid: int):
-        m = tk.Menu(self.parent, tearoff=0, bg="#182236", fg=WHITE,
+        m = tk.Menu(self.parent, tearoff=0, bg="#1f1b18", fg=WHITE,
                     activebackground=CRIMSON, activeforeground=WHITE,
                     bd=0, relief="flat", font=("Helvetica", 10))
         m.add_command(label="Open Case",
@@ -1213,7 +1213,7 @@ class CaseDetailDialog(tk.Toplevel):
         tk.Label(hdr, text=f"● {status}", bg=BG,
                  fg=STATUS_FG.get(status, LIGHT_GRAY),
                  font=("Helvetica", 10, "bold")).pack(side="right")
-        tk.Frame(inner, bg="#182236", height=1).pack(
+        tk.Frame(inner, bg="#1f1b18", height=1).pack(
             fill="x", padx=PAD, pady=(14, 0))
 
         # ── Metadata ──────────────────────────────────────────────────────────
@@ -1227,7 +1227,7 @@ class CaseDetailDialog(tk.Toplevel):
             ("Created",    (case.get("created_at")    or "")[:19].replace("T", "  ")),
         ]
         for i, (lbl, val) in enumerate(meta_rows):
-            rb = "#101625" if i % 2 == 0 else "#121a2b"
+            rb = "#141210" if i % 2 == 0 else "#1a1715"
             row = tk.Frame(mc, bg=rb)
             row.pack(fill="x")
             tk.Label(row, text=lbl, bg=rb, fg=LIGHT_GRAY,
@@ -1243,7 +1243,7 @@ class CaseDetailDialog(tk.Toplevel):
             self._sec(inner, PAD, "ARCHIVE URL")
             af = _card(inner, PAD)
             _url_row(af, arch)
-            br = tk.Frame(af, bg="#101625")
+            br = tk.Frame(af, bg="#141210")
             br.pack(side="right", padx=8, pady=6)
             self._mini(br, "Copy", lambda u=arch: self._copy(u))
             self._mini(br, "Open", lambda u=arch: subprocess.Popen(["open", u]))
@@ -1259,10 +1259,10 @@ class CaseDetailDialog(tk.Toplevel):
 
         # ── Caption editor ────────────────────────────────────────────────────
         self._sec(inner, PAD, "BUFFER CAPTION")
-        cw = tk.Frame(inner, bg="#182236",
-                      highlightthickness=1, highlightbackground="#232c40")
+        cw = tk.Frame(inner, bg="#1f1b18",
+                      highlightthickness=1, highlightbackground="#2a2725")
         cw.pack(fill="x", padx=PAD)
-        self._cap = tk.Text(cw, bg="#182236", fg=WHITE,
+        self._cap = tk.Text(cw, bg="#1f1b18", fg=WHITE,
                             insertbackground=WHITE, font=("Helvetica", 10),
                             bd=0, relief="flat", highlightthickness=0,
                             wrap="word", height=11)
@@ -1287,14 +1287,14 @@ class CaseDetailDialog(tk.Toplevel):
                      values=ALL_STATUSES, state="readonly",
                      font=("Helvetica", 11), width=18).pack(side="left")
         self._mini(sr, "UPDATE", self._save_status,
-                   side="left", bg="#182236", fg=WHITE, hbg="#232c40", px=8)
+                   side="left", bg="#1f1b18", fg=WHITE, hbg="#2a2725", px=8)
 
         # ── Thumbnail ─────────────────────────────────────────────────────────
         self._sec(inner, PAD, "THUMBNAIL")
         tc = _card(inner, PAD)
-        ti = tk.Frame(tc, bg="#101625")
+        ti = tk.Frame(tc, bg="#141210")
         ti.pack(fill="x", padx=12, pady=12)
-        self._thumb_lbl = tk.Label(ti, bg="#121a2b", fg="#293349",
+        self._thumb_lbl = tk.Label(ti, bg="#1a1715", fg="#332f2c",
                                     text="No thumbnail",
                                     font=("Helvetica", 9),
                                     width=24, height=8)
@@ -1303,15 +1303,15 @@ class CaseDetailDialog(tk.Toplevel):
         thumb_path = self.library._resolve_path(tp) if tp else Path("")
         if tp and thumb_path.exists():
             self._load_thumb(str(thumb_path))
-        tb = tk.Frame(ti, bg="#101625")
+        tb = tk.Frame(ti, bg="#141210")
         tb.pack(side="left", fill="y", padx=(14, 0))
         self._mini(tb, "Regenerate",
                    lambda: self._regen_thumb(),
-                   bg="#182236", fg=WHITE, hbg="#232c40",
+                   bg="#1f1b18", fg=WHITE, hbg="#2a2725",
                    fill=True, py=5)
         self._mini(tb, "Choose Image",
                    self._pick_thumb,
-                   bg="#182236", fg=WHITE, hbg="#232c40",
+                   bg="#1f1b18", fg=WHITE, hbg="#2a2725",
                    fill=True, py=5)
 
         # ── Processing timeline ───────────────────────────────────────────────
@@ -1323,31 +1323,31 @@ class CaseDetailDialog(tk.Toplevel):
                 ts  = (evt.get("event_time") or "")[:19].replace("T", "  ")
                 lbl = evt.get("event_label") or ""
                 det = evt.get("detail") or ""
-                er  = tk.Frame(tlc, bg="#101625")
+                er  = tk.Frame(tlc, bg="#141210")
                 er.pack(fill="x", padx=12, pady=2)
-                tk.Label(er, text=ts, bg="#101625", fg="#333e58",
+                tk.Label(er, text=ts, bg="#141210", fg="#3a3633",
                          font=("Courier", 8), width=20, anchor="w").pack(side="left")
                 text = f"{lbl}  {det}".strip()
-                tk.Label(er, text=text, bg="#101625", fg=LIGHT_GRAY,
+                tk.Label(er, text=text, bg="#141210", fg=LIGHT_GRAY,
                          font=("Helvetica", 8), anchor="w",
                          wraplength=460, justify="left").pack(
                          side="left", fill="x", expand=True)
         else:
             tk.Label(tlc, text="No events recorded.",
-                     bg="#101625", fg="#232c40",
+                     bg="#141210", fg="#2a2725",
                      font=("Helvetica", 9)).pack(padx=12, pady=8, anchor="w")
-        tk.Frame(tlc, bg="#101625", height=4).pack()
+        tk.Frame(tlc, bg="#141210", height=4).pack()
 
         # ── Delete ────────────────────────────────────────────────────────────
-        tk.Frame(inner, bg="#182236", height=1).pack(
+        tk.Frame(inner, bg="#1f1b18", height=1).pack(
             fill="x", padx=PAD, pady=(22, 0))
         dl = tk.Label(inner, text="▸  DELETE CASE",
-                      bg=BG, fg="#232c40",
+                      bg=BG, fg="#2a2725",
                       font=("Helvetica", 10, "bold"),
                       cursor="hand2", pady=11, padx=PAD, anchor="w")
         dl.pack(fill="x", pady=(6, 24))
         dl.bind("<Enter>",    lambda e: dl.config(fg=ERROR_RED))
-        dl.bind("<Leave>",    lambda e: dl.config(fg="#232c40"))
+        dl.bind("<Leave>",    lambda e: dl.config(fg="#2a2725"))
         dl.bind("<Button-1>", lambda e: self._delete())
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -1357,8 +1357,8 @@ class CaseDetailDialog(tk.Toplevel):
                  font=("Helvetica", 8, "bold")).pack(
                  anchor="w", padx=pad, pady=(16, 4))
 
-    def _mini(self, parent, text, cmd, side="left", bg="#182236",
-              fg=WHITE, hbg="#232c40", px=0, py=0, fill=False):
+    def _mini(self, parent, text, cmd, side="left", bg="#1f1b18",
+              fg=WHITE, hbg="#2a2725", px=0, py=0, fill=False):
         b = tk.Label(parent, text=text, bg=bg, fg=fg, cursor="hand2",
                      font=("Helvetica", 9, "bold"),
                      padx=10 + px, pady=5 + py)
@@ -1448,15 +1448,15 @@ class CaseDetailDialog(tk.Toplevel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _card(parent, pad) -> tk.Frame:
-    f = tk.Frame(parent, bg="#101625",
-                 highlightthickness=1, highlightbackground="#182236")
+    f = tk.Frame(parent, bg="#141210",
+                 highlightthickness=1, highlightbackground="#1f1b18")
     f.pack(fill="x", padx=pad)
     return f
 
 
 def _url_row(parent: tk.Frame, url: str):
     display = url if len(url) <= 74 else url[:71] + "…"
-    tk.Label(parent, text=display, bg="#101625", fg="#38bdf8",
+    tk.Label(parent, text=display, bg="#141210", fg="#a6a29b",
              font=("Courier", 9), wraplength=520,
              justify="left", anchor="w").pack(
              side="left", fill="x", expand=True, padx=10, pady=8)

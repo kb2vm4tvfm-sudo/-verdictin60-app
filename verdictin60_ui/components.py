@@ -26,12 +26,16 @@ STATUS_STYLES = {
 }
 
 
-def make_card(parent, padx=16, pady=14, bg=CARD, border=BORDER):
-    """A rounded-feel bordered panel — the base surface for grouped content."""
+def make_card(parent, padx=18, pady=16, bg=CARD, border=BORDER, hover=True):
+    """A rounded-feel bordered panel — the base surface for grouped content.
+    Brightens its border on hover for a subtle "elevated" feel unless hover=False."""
     card = tk.Frame(parent, bg=bg, highlightthickness=1,
                      highlightbackground=border, highlightcolor=border)
     card._content = tk.Frame(card, bg=bg)
     card._content.pack(fill="both", expand=True, padx=padx, pady=pady)
+    if hover:
+        card.bind("<Enter>", lambda e: card.configure(highlightbackground=BORDER_LIGHT))
+        card.bind("<Leave>", lambda e: card.configure(highlightbackground=border))
     return card
 
 

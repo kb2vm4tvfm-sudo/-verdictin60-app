@@ -112,7 +112,7 @@ DEFAULT_HASHTAGS = "#truecrime #verdictin60 #truecrimecommunity #coldcase #crime
 # ── Background drawing ────────────────────────────────────────────────────────
 
 def _draw_watermarks(canvas, w, h):
-    c = "#182236"
+    c = "#1f1b18"
     for x1, y1, x2, y2 in [(28, 60, 68, 100), (20, 50, 30, 60), (66, 98, 76, 108)]:
         canvas.create_rectangle(x1, y1, x2, y2, fill=c, outline="")
     canvas.create_rectangle(20, 95, 80, 102, fill=c, outline="")
@@ -135,7 +135,7 @@ def _draw_watermarks(canvas, w, h):
 def _draw_grain(canvas, w, h):
     for gy in range(0, h, 18):
         for gx in range(0, w, 18):
-            shade = "#101625" if (gx // 18 + gy // 18) % 2 == 0 else "#0d1220"
+            shade = "#141210" if (gx // 18 + gy // 18) % 2 == 0 else "#0e0d0c"
             canvas.create_rectangle(gx, gy, gx+1, gy+1, fill=shade, outline="")
 
 
@@ -321,7 +321,7 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
     FOLDER_LIGHT = "#C4A04A"
     PAGE_COL     = "#E8E4D8"
     GAVEL_HEAD   = "#DDDDDD"
-    GAVEL_SHADE  = "#a8b3c7"
+    GAVEL_SHADE  = "#a6a29b"
     HANDLE_COL   = "#8B6030"
 
     fw, fh = 224, 78
@@ -383,7 +383,7 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
         if 0.34 < phase < 0.60:
             c.configure(highlightbackground=CRIMSON, highlightthickness=2)
         else:
-            c.configure(highlightbackground="#232c40", highlightthickness=1)
+            c.configure(highlightbackground="#2a2725", highlightthickness=1)
         gh_w, gh_h = 80, 24
         ghx1, ghy1 = cx - gh_w // 2, gavel_y
         ghx2, ghy2 = cx + gh_w // 2, gavel_y + gh_h
@@ -414,7 +414,7 @@ def _draw_anim(c, state, phase, status_txt, idle_hint=""):
                       width=cw - 40)
     elif state == "idle" and not status_txt:
         c.create_text(cx, fy2 + 20, text=idle_hint,
-                      font=("Courier", 9), fill="#5b6578")
+                      font=("Courier", 9), fill="#5c5850")
     elif state == "error" and status_txt:
         clean = status_txt.lstrip("✗✓ ")
         c.create_text(cx, fy2 + 20, text=clean,
@@ -589,35 +589,35 @@ class App(tk.Tk):
         severity = issue.get("severity", "ok")
         accent = "#22c55e" if severity == "ok" else CRIMSON
         row = tk.Frame(
-            self._recovery_results, bg="#111a2b",
-            highlightthickness=1, highlightbackground="#232c40"
+            self._recovery_results, bg="#1a1715",
+            highlightthickness=1, highlightbackground="#2a2725"
         )
         row.pack(fill="x", pady=(0, 8))
 
-        left = tk.Frame(row, bg="#111a2b")
+        left = tk.Frame(row, bg="#1a1715")
         left.pack(side="left", fill="both", expand=True, padx=12, pady=10)
-        header_row = tk.Frame(left, bg="#111a2b")
+        header_row = tk.Frame(left, bg="#1a1715")
         header_row.pack(anchor="w", fill="x")
         tk.Label(header_row, text=f"{issue['area']}  ·  {issue['status']}",
-                 bg="#111a2b", fg=accent,
+                 bg="#1a1715", fg=accent,
                  font=("Helvetica", 10, "bold")).pack(side="left")
         make_badge(
             header_row, "OK" if severity == "ok" else severity.upper(),
             status="success" if severity == "ok" else ("warning" if severity == "warning" else "error"),
         ).pack(side="left", padx=(8, 0))
         tk.Label(left, text=issue["problem"],
-                 bg="#111a2b", fg=WHITE,
+                 bg="#1a1715", fg=WHITE,
                  font=("Helvetica", 10), wraplength=470,
                  justify="left").pack(anchor="w", pady=(3, 0))
         tk.Label(left, text=issue["why"],
-                 bg="#111a2b", fg=LIGHT_GRAY,
+                 bg="#1a1715", fg=LIGHT_GRAY,
                  font=("Helvetica", 9), wraplength=470,
                  justify="left").pack(anchor="w", pady=(3, 0))
 
         if issue.get("action"):
             _make_lbtn(
                 row, "REPAIR", lambda i=issue: self._recovery_confirm_repair(i),
-                bg="#182236", fg=WHITE, hover_bg="#232c40",
+                bg="#1f1b18", fg=WHITE, hover_bg="#2a2725",
                 font=("Helvetica", 9, "bold"), pady=8, padx=14
             ).pack(side="right", padx=12)
 
@@ -669,7 +669,7 @@ class App(tk.Tk):
         ).pack(side="left", fill="x", expand=True, padx=(0, 6))
         _make_lbtn(
             btn_row, "CANCEL", _cancel,
-            bg="#232c40", fg=WHITE, hover_bg="#333e58",
+            bg="#2a2725", fg=WHITE, hover_bg="#3a3633",
             font=("Helvetica", 10, "bold"), pady=10
         ).pack(side="left", fill="x", expand=True, padx=(6, 0))
 
@@ -848,27 +848,27 @@ class App(tk.Tk):
                        case_title: str = "", caption: str = "",
                        final_caption: bool = False):
         idx = len(self._batch_rows)
-        bg = "#121a2b" if idx % 2 == 0 else "#141c2e"
+        bg = "#1a1715" if idx % 2 == 0 else "#211d1a"
 
         frame = tk.Frame(self._batch_list_frame, bg=bg, pady=0)
         frame.pack(fill="x", padx=0)
-        tk.Frame(frame, bg="#232c40", height=1).pack(fill="x")
+        tk.Frame(frame, bg="#2a2725", height=1).pack(fill="x")
         inner = tk.Frame(frame, bg=bg)
         inner.pack(fill="x", padx=10, pady=8)
 
         # Source label (truncated)
         source_name = path.stem if path else re.sub(r"^https?://", "", url)
         fname = source_name[:22] + "…" if len(source_name) > 22 else source_name
-        tk.Label(inner, text=fname, font=("Helvetica", 8), fg="#a8b3c7",
+        tk.Label(inner, text=fname, font=("Helvetica", 8), fg="#a6a29b",
                  bg=bg, width=20, anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 8))
 
         # Case title entry
         initial_title = case_title or (filename_to_display(name_to_filename(path.stem)) if path else "")
         case_var = tk.StringVar(value=initial_title)
         title_entry = tk.Entry(inner, textvariable=case_var,
-                               font=("Helvetica", 9), fg=WHITE, bg="#182236",
+                               font=("Helvetica", 9), fg=WHITE, bg="#1f1b18",
                                insertbackground=WHITE, relief="flat",
-                               highlightthickness=1, highlightbackground="#232c40",
+                               highlightthickness=1, highlightbackground="#2a2725",
                                highlightcolor=CRIMSON)
         title_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
 
@@ -884,16 +884,16 @@ class App(tk.Tk):
         # Remove button
         remove_btn = _make_lbtn(
             inner, "✕", lambda i=idx: self._batch_remove_row(i),
-            bg=bg, fg="#64748b", hover_bg=bg, hover_fg=ERROR_RED, normal_fg="#64748b",
+            bg=bg, fg="#6b675f", hover_bg=bg, hover_fg=ERROR_RED, normal_fg="#6b675f",
             font=("Helvetica", 11, "bold"), pady=2, padx=4
         )
         remove_btn.grid(row=0, column=3, padx=(4, 0))
 
         # Raw caption text area (full width, row 1)
         caption_text = tk.Text(inner, height=4, font=("Helvetica", 9),
-                               fg=WHITE, bg="#182236", insertbackground=WHITE,
+                               fg=WHITE, bg="#1f1b18", insertbackground=WHITE,
                                relief="flat", highlightthickness=1,
-                               highlightbackground="#232c40", highlightcolor=CRIMSON,
+                               highlightbackground="#2a2725", highlightcolor=CRIMSON,
                                wrap="word", padx=6, pady=6)
         caption_text.insert("1.0", caption or "Paste raw caption here...")
         caption_text.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(6, 2))
@@ -940,7 +940,7 @@ class App(tk.Tk):
         if n == 0:
             self._batch_empty_lbl.pack(pady=30)
             self._btn_schedule_all.config(text="SCHEDULE ALL  ( 0 videos )")
-            _lbtn_disable(self._btn_schedule_all, MUTED, "#94a3b8")
+            _lbtn_disable(self._btn_schedule_all, MUTED, "#8a8680")
         else:
             self._batch_empty_lbl.pack_forget()
             self._btn_schedule_all.config(
@@ -949,7 +949,7 @@ class App(tk.Tk):
             if not self._batch_running:
                 _lbtn_enable(self._btn_schedule_all, CRIMSON, WHITE, CRIMSON_HOT)
             else:
-                _lbtn_disable(self._btn_schedule_all, MUTED, "#94a3b8")
+                _lbtn_disable(self._btn_schedule_all, MUTED, "#8a8680")
 
     # ── Batch processing ──────────────────────────────────────────────────────
 
@@ -980,7 +980,7 @@ class App(tk.Tk):
                 )
                 return
         self._batch_running = True
-        _lbtn_disable(self._btn_schedule_all, MUTED, "#94a3b8")
+        _lbtn_disable(self._btn_schedule_all, MUTED, "#8a8680")
         self._batch_status_lbl.config(text="🔴  Processing batch...", fg=LIGHT_GRAY)
         threading.Thread(target=self._run_batch, daemon=True).start()
 
@@ -1156,7 +1156,7 @@ class App(tk.Tk):
             if plat == detected:
                 btn.config(bg=CRIMSON, fg=WHITE)
             else:
-                btn.config(bg="#182236", fg="#64748b")
+                btn.config(bg="#1f1b18", fg="#6b675f")
 
     def _url_prepare_next_import(self):
         self._url_entry.delete(0, "end")
@@ -1184,13 +1184,13 @@ class App(tk.Tk):
     def _show_model_banner(self, model: str):
         if hasattr(self, "_model_banner") and self._model_banner.winfo_exists():
             return
-        self._model_banner = tk.Frame(self._outer, bg="#241a0a",
+        self._model_banner = tk.Frame(self._outer, bg="#26200c",
                                       highlightthickness=1, highlightbackground=CRIMSON)
         self._model_banner.pack(fill="x", padx=30, pady=(8, 0), before=self._single_frame)
-        inner = tk.Frame(self._model_banner, bg="#241a0a")
+        inner = tk.Frame(self._model_banner, bg="#26200c")
         inner.pack(fill="x", padx=12, pady=8)
         tk.Label(inner, text=f"⚠  Recommended AI model ({model}) is not installed.",
-                 bg="#241a0a", fg="#fbbf24",
+                 bg="#26200c", fg="#fbbf24",
                  font=("Helvetica", 10)).pack(side="left")
         _make_lbtn(inner, "Install Model",
                    lambda: self._install_ai_model(model),
@@ -1206,10 +1206,10 @@ class App(tk.Tk):
                  font=("Helvetica", 13, "bold")).pack(pady=(20, 6))
         tk.Label(win, text="This may take several minutes — do not close this window.",
                  bg=BG, fg=LIGHT_GRAY, font=("Helvetica", 10)).pack()
-        log_frame = tk.Frame(win, bg="#101625", highlightthickness=1,
-                             highlightbackground="#293349")
+        log_frame = tk.Frame(win, bg="#141210", highlightthickness=1,
+                             highlightbackground="#332f2c")
         log_frame.pack(fill="both", expand=True, padx=20, pady=14)
-        log_txt = tk.Text(log_frame, bg="#101625", fg=LIGHT_GRAY, font=("Courier", 9),
+        log_txt = tk.Text(log_frame, bg="#141210", fg=LIGHT_GRAY, font=("Courier", 9),
                           bd=0, wrap="word", state="disabled", highlightthickness=0)
         log_txt.pack(fill="both", expand=True, padx=8, pady=8)
         done_lbl = tk.Label(win, text="", bg=BG, fg="#22c55e",
@@ -1270,8 +1270,8 @@ class App(tk.Tk):
                 fg=LIGHT_GRAY
             )
             self._btn_install_ollama.pack(side="left", padx=(10, 0))
-            self._url_ai_badge.config(fg="#5b6578")
-            self._url_cap_badge.config(fg="#5b6578")
+            self._url_ai_badge.config(fg="#5c5850")
+            self._url_cap_badge.config(fg="#5c5850")
 
     def _url_install_ollama(self):
         """Open a top-level progress window and run Ollama install + model pull."""
@@ -1283,10 +1283,10 @@ class App(tk.Tk):
                  font=("Helvetica", 13, "bold")).pack(pady=(20, 6))
         tk.Label(win, text="This may take a few minutes — do not close this window.",
                  bg=BG, fg=LIGHT_GRAY, font=("Helvetica", 10)).pack()
-        log_frame = tk.Frame(win, bg="#101625",
-                             highlightthickness=1, highlightbackground="#293349")
+        log_frame = tk.Frame(win, bg="#141210",
+                             highlightthickness=1, highlightbackground="#332f2c")
         log_frame.pack(fill="both", expand=True, padx=20, pady=14)
-        log_txt = tk.Text(log_frame, bg="#101625", fg=LIGHT_GRAY,
+        log_txt = tk.Text(log_frame, bg="#141210", fg=LIGHT_GRAY,
                           font=("Courier", 9), bd=0, wrap="word",
                           state="disabled", highlightthickness=0)
         log_txt.pack(fill="both", expand=True, padx=8, pady=8)
@@ -1437,8 +1437,8 @@ class App(tk.Tk):
         # check_ollama() has a 3-second network timeout — run it on the thread,
         # NOT here on the main thread where it would freeze the UI.
         print("[URL IMPORT] Handing off to background thread")
-        _lbtn_disable(self._btn_url_import, MUTED, "#94a3b8")
-        _lbtn_disable(self._btn_use_my_caption, "#182236", "#64748b")
+        _lbtn_disable(self._btn_url_import, MUTED, "#8a8680")
+        _lbtn_disable(self._btn_use_my_caption, "#1f1b18", "#6b675f")
         self._url_set_status("⏳  Fetching video metadata...")
         threading.Thread(
             target=self._run_url_import,
@@ -1459,7 +1459,7 @@ class App(tk.Tk):
         self._url_install_btn = _make_lbtn(
             self._url_anim_canvas.master, "Install yt-dlp",
             self._url_install_ytdlp,
-            bg="#182236", fg=LIGHT_GRAY, hover_bg="#232c40",
+            bg="#1f1b18", fg=LIGHT_GRAY, hover_bg="#2a2725",
             font=("Helvetica", 10), pady=8, padx=16
         )
         self._url_install_btn.pack(pady=(0, 8))
@@ -1492,7 +1492,7 @@ class App(tk.Tk):
         if not self._pending_upload_url:
             return
         self._btn_retry_schedule.pack_forget()
-        _lbtn_disable(self._btn_url_import, MUTED, "#94a3b8")
+        _lbtn_disable(self._btn_url_import, MUTED, "#8a8680")
         url      = self._pending_upload_url
         caption  = self._pending_caption
         due_dt   = self._pending_due_dt
@@ -1576,7 +1576,7 @@ class App(tk.Tk):
             print("[URL IMPORT] Re-enabling button")
             self.after(0, lambda: _lbtn_enable(self._btn_url_import, CRIMSON, WHITE, CRIMSON_HOT))
             self.after(0, lambda: _lbtn_enable(
-                self._btn_use_my_caption, "#182236", LIGHT_GRAY, "#232c40"
+                self._btn_use_my_caption, "#1f1b18", LIGHT_GRAY, "#2a2725"
             ))
 
         try:
@@ -1801,10 +1801,10 @@ class App(tk.Tk):
                         tk.Label(dlg, text=hint, bg=BG, fg=LIGHT_GRAY,
                                  font=("Helvetica", 10)).pack(pady=(0, 10))
 
-                        name_frame = tk.Frame(dlg, bg="#182236",
-                                             highlightthickness=1, highlightbackground="#293349")
+                        name_frame = tk.Frame(dlg, bg="#1f1b18",
+                                             highlightthickness=1, highlightbackground="#332f2c")
                         name_frame.pack(fill="x", padx=24)
-                        name_entry = tk.Entry(name_frame, bg="#182236", fg=WHITE,
+                        name_entry = tk.Entry(name_frame, bg="#1f1b18", fg=WHITE,
                                               insertbackground=WHITE, font=("Helvetica", 13),
                                               bd=0, relief="flat", highlightthickness=0)
                         name_entry.pack(fill="x", padx=10, pady=10)
@@ -1824,8 +1824,8 @@ class App(tk.Tk):
                         _make_lbtn(btn_row, "CONTINUE", _ok, bg=CRIMSON, fg=WHITE,
                                    hover_bg=CRIMSON_HOT, font=("Helvetica", 11, "bold"),
                                    pady=10).pack(side="left", fill="x", expand=True, padx=(0, 6))
-                        _make_lbtn(btn_row, "CANCEL", _cancel, bg="#232c40", fg=WHITE,
-                                   hover_bg="#333e58", font=("Helvetica", 11, "bold"),
+                        _make_lbtn(btn_row, "CANCEL", _cancel, bg="#2a2725", fg=WHITE,
+                                   hover_bg="#3a3633", font=("Helvetica", 11, "bold"),
                                    pady=10).pack(side="left", fill="x", expand=True)
                         dlg.protocol("WM_DELETE_WINDOW", _cancel)
                         dlg.wait_window()
@@ -2306,44 +2306,44 @@ class App(tk.Tk):
 
                     # Hallucination warnings (shown in red if any)
                     if _warnings_snap:
-                        warn_frame = tk.Frame(dlg, bg="#2a1015",
+                        warn_frame = tk.Frame(dlg, bg="#271512",
                                              highlightthickness=1, highlightbackground="#7a1a1a")
                         warn_frame.pack(fill="x", padx=24, pady=(0, 8))
                         tk.Label(warn_frame,
                                  text="⚠  AI FACT-CHECK WARNINGS — Review carefully:",
-                                 bg="#2a1015", fg=ERROR_RED,
+                                 bg="#271512", fg=ERROR_RED,
                                  font=("Helvetica", 9, "bold")).pack(anchor="w", padx=8, pady=(6, 2))
                         for w in _warnings_snap[:6]:
-                            tk.Label(warn_frame, text=f"  • {w}", bg="#2a1015",
-                                     fg="#fca5a5", font=("Helvetica", 9),
+                            tk.Label(warn_frame, text=f"  • {w}", bg="#271512",
+                                     fg="#dba49e", font=("Helvetica", 9),
                                      wraplength=620, justify="left").pack(anchor="w", padx=8)
-                        tk.Frame(warn_frame, bg="#2a1015", height=6).pack()
+                        tk.Frame(warn_frame, bg="#271512", height=6).pack()
 
                     if verification_sources:
-                        src_frame = tk.Frame(dlg, bg="#111a2b",
-                                             highlightthickness=1, highlightbackground="#293349")
+                        src_frame = tk.Frame(dlg, bg="#1a1715",
+                                             highlightthickness=1, highlightbackground="#332f2c")
                         src_frame.pack(fill="x", padx=24, pady=(0, 8))
                         tk.Label(src_frame, text=f"SOURCES FOUND — CONFIDENCE: {confidence_label.upper()}",
-                                 bg="#111a2b", fg=LIGHT_GRAY,
+                                 bg="#1a1715", fg=LIGHT_GRAY,
                                  font=("Helvetica", 9, "bold")).pack(anchor="w", padx=8, pady=(6, 2))
                         for src in verification_sources[:5]:
                             status = "blocked" if src.get("blocked") else src.get("kind", "Source")
                             tk.Label(
                                 src_frame,
                                 text=f"• [{status}] {src.get('title','Source')} — {src.get('url','')}",
-                                bg="#111a2b", fg="#a8b3c7",
+                                bg="#1a1715", fg="#a6a29b",
                                 font=("Helvetica", 8),
                                 wraplength=620, justify="left"
                             ).pack(anchor="w", padx=8)
-                        tk.Frame(src_frame, bg="#111a2b", height=6).pack()
+                        tk.Frame(src_frame, bg="#1a1715", height=6).pack()
 
-                    tk.Frame(dlg, bg="#232c40", height=1).pack(fill="x", padx=24)
+                    tk.Frame(dlg, bg="#2a2725", height=1).pack(fill="x", padx=24)
 
                     # Editable caption text area
-                    cap_frame = tk.Frame(dlg, bg="#182236",
-                                        highlightthickness=1, highlightbackground="#293349")
+                    cap_frame = tk.Frame(dlg, bg="#1f1b18",
+                                        highlightthickness=1, highlightbackground="#332f2c")
                     cap_frame.pack(fill="both", expand=True, padx=24, pady=14)
-                    cap_txt = tk.Text(cap_frame, bg="#182236", fg=WHITE,
+                    cap_txt = tk.Text(cap_frame, bg="#1f1b18", fg=WHITE,
                                      insertbackground=WHITE, font=("Helvetica", 12),
                                      bd=0, relief="flat", highlightthickness=0,
                                      wrap="word", height=20)
@@ -2386,10 +2386,10 @@ class App(tk.Tk):
                         dlg.destroy()
                         dialog_done.set()
 
-                    cancel_wrap = tk.Frame(btn_row, bg="#5b6578", padx=1, pady=1)
+                    cancel_wrap = tk.Frame(btn_row, bg="#5c5850", padx=1, pady=1)
                     cancel_wrap.pack(side="left", fill="x", expand=True, padx=(6, 0))
                     _make_lbtn(cancel_wrap, "✗  CANCEL", _cancel,
-                               bg="#232c40", fg=WHITE, hover_bg="#333e58",
+                               bg="#2a2725", fg=WHITE, hover_bg="#3a3633",
                                font=("Helvetica", 12, "bold"), pady=14).pack(fill="x")
 
                     dlg.protocol("WM_DELETE_WINDOW", _cancel)
@@ -2845,8 +2845,8 @@ class App(tk.Tk):
         if not raw_caption:
             self._set_status("Paste a raw caption before exporting.", error=True)
             return
-        _lbtn_disable(self._btn_export, MUTED, "#94a3b8")
-        _lbtn_disable(self._btn_select, "#182236", "#64748b")
+        _lbtn_disable(self._btn_export, MUTED, "#8a8680")
+        _lbtn_disable(self._btn_select, "#1f1b18", "#6b675f")
         self._btn_open.pack_forget()
         self._processing = True
         self._progress.start(10)
@@ -3012,8 +3012,8 @@ class App(tk.Tk):
             if self.selected_file:
                 _lbtn_enable(self._btn_export, CRIMSON, WHITE, CRIMSON_HOT)
             else:
-                _lbtn_disable(self._btn_export, MUTED, "#94a3b8")
-            _lbtn_enable(self._btn_select, "#182236", WHITE, "#232c40")
+                _lbtn_disable(self._btn_export, MUTED, "#8a8680")
+            _lbtn_enable(self._btn_select, "#1f1b18", WHITE, "#2a2725")
         self.after(0, _re_enable_export)
         if success:
             self.after(0, self._show_open_btn)
