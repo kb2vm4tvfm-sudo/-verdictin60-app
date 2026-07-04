@@ -53,11 +53,11 @@ from verdictin60_ui.widgets import (
 )
 from verdictin60_ui.theme import (
     SIDEBAR_BG, SIDEBAR_WIDTH, BORDER, BORDER_LIGHT, INPUT_BG,
-    TEXT_SECONDARY, TEXT_DIM, FONT_FAMILY,
+    CARD_ALT, CARD_HOVER, TEXT_SECONDARY, TEXT_DIM, FONT_FAMILY,
 )
 from verdictin60_ui.components import (
     make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
-    stop_loading_state, make_error_banner, make_source_list,
+    stop_loading_state, make_error_banner, make_source_list, make_card, card_body,
 )
 from verdictin60_ui.settings_tab import SettingsDialog
 from verdictin60_ui.single_export_tab import build_single_tab
@@ -852,27 +852,25 @@ class App(tk.Tk):
                        case_title: str = "", caption: str = "",
                        final_caption: bool = False):
         idx = len(self._batch_rows)
-        bg = "#1a1715" if idx % 2 == 0 else "#211d1a"
+        bg = CARD_ALT if idx % 2 == 0 else CARD_HOVER
 
-        frame = tk.Frame(self._batch_list_frame, bg=bg, pady=0)
-        frame.pack(fill="x", padx=0)
-        tk.Frame(frame, bg="#2a2725", height=1).pack(fill="x")
-        inner = tk.Frame(frame, bg=bg)
-        inner.pack(fill="x", padx=10, pady=8)
+        frame = make_card(self._batch_list_frame, padx=10, pady=8, bg=bg, border=BORDER)
+        frame.pack(fill="x", padx=8, pady=4)
+        inner = card_body(frame)
 
         # Source label (truncated)
         source_name = path.stem if path else re.sub(r"^https?://", "", url)
         fname = source_name[:22] + "…" if len(source_name) > 22 else source_name
-        tk.Label(inner, text=fname, font=("Helvetica", 8), fg="#a6a29b",
+        tk.Label(inner, text=fname, font=(FONT_FAMILY, 8), fg=TEXT_SECONDARY,
                  bg=bg, width=20, anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 8))
 
         # Case title entry
         initial_title = case_title or (filename_to_display(name_to_filename(path.stem)) if path else "")
         case_var = tk.StringVar(value=initial_title)
         title_entry = tk.Entry(inner, textvariable=case_var,
-                               font=("Helvetica", 9), fg=WHITE, bg="#1f1b18",
+                               font=(FONT_FAMILY, 9), fg=WHITE, bg=INPUT_BG,
                                insertbackground=WHITE, relief="flat",
-                               highlightthickness=1, highlightbackground="#2a2725",
+                               highlightthickness=1, highlightbackground=BORDER,
                                highlightcolor=CRIMSON)
         title_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
 
@@ -881,29 +879,29 @@ class App(tk.Tk):
         dt = batch_post_datetime(s.get("post_time", "18:00"), idx)
         local_dt = dt.astimezone()
         date_str = local_dt.strftime("%b %-d")
-        date_lbl = tk.Label(inner, text=date_str, font=("Helvetica", 8, "bold"),
+        date_lbl = tk.Label(inner, text=date_str, font=(FONT_FAMILY, 8, "bold"),
                             fg=CRIMSON, bg=bg, width=7, anchor="center")
         date_lbl.grid(row=0, column=2, padx=(0, 6))
 
         # Remove button
         remove_btn = _make_lbtn(
             inner, "✕", lambda i=idx: self._batch_remove_row(i),
-            bg=bg, fg="#6b675f", hover_bg=bg, hover_fg=ERROR_RED, normal_fg="#6b675f",
-            font=("Helvetica", 11, "bold"), pady=2, padx=4
+            bg=bg, fg=TEXT_DIM, hover_bg=bg, hover_fg=ERROR_RED, normal_fg=TEXT_DIM,
+            font=(FONT_FAMILY, 11, "bold"), pady=2, padx=4
         )
         remove_btn.grid(row=0, column=3, padx=(4, 0))
 
         # Raw caption text area (full width, row 1)
-        caption_text = tk.Text(inner, height=4, font=("Helvetica", 9),
-                               fg=WHITE, bg="#1f1b18", insertbackground=WHITE,
+        caption_text = tk.Text(inner, height=4, font=(FONT_FAMILY, 9),
+                               fg=WHITE, bg=INPUT_BG, insertbackground=WHITE,
                                relief="flat", highlightthickness=1,
-                               highlightbackground="#2a2725", highlightcolor=CRIMSON,
+                               highlightbackground=BORDER, highlightcolor=CRIMSON,
                                wrap="word", padx=6, pady=6)
         caption_text.insert("1.0", caption or "Paste raw caption here...")
         caption_text.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(6, 2))
 
         # Status label (shown after processing)
-        status_lbl = tk.Label(inner, text="", font=("Helvetica", 8),
+        status_lbl = tk.Label(inner, text="", font=(FONT_FAMILY, 8),
                               fg=LIGHT_GRAY, bg=bg, anchor="w")
         status_lbl.grid(row=2, column=0, columnspan=3, sticky="w")
 
