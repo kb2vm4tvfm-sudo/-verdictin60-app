@@ -44,6 +44,23 @@ This roadmap is a living guide. Keep changes practical and focused on making the
 - Add a repeatable build checklist.
 - Add a release checklist for local testing, credentials, app launch, export, and scheduling.
 
+## Phase 7: Research Hub
+
+- Research Hub tab shipped: multi-clue search panel, AI case identification
+  (never inventing facts, plain "too low to identify" messaging), budgeted
+  source gathering (`deadline_seconds`/`max_sources` on
+  `gather_verification_sources`), Wayback Machine archive recovery, and a
+  results view grouped into Official / Reporting (Accessible) / Reporting
+  (Archived) / Blocked, with Save to Case Library, Generate Caption, Copy
+  Sources/Archive Links, Open All Sources, and Export Markdown actions.
+- Not yet built: a conversational AI research assistant that can answer
+  follow-up questions ("find more official sources", "summarize the
+  timeline") against the sources already gathered for a case.
+- Not yet built: PDF export of the investigation report (Markdown export
+  ships now).
+- Not yet built: drag-and-drop clue/link input (multi-line paste already
+  works; drag-and-drop would need a new Tkinter dependency).
+
 ## Nice-To-Have Ideas
 
 - A local dashboard showing service health.

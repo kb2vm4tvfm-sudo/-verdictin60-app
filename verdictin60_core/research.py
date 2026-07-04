@@ -32,9 +32,31 @@ from pathlib import Path
 
 SOURCE_CACHE_PATH = Path(__file__).resolve().parent.parent / "source-cache.json"
 
+# Strict per-URL timeouts so a single slow/blocked source can't stall an
+# investigation for minutes (Research Hub target: usable results in <90s).
+DIRECT_FETCH_TIMEOUT  = 7   # seconds — plain urllib fetch
+BROWSER_FETCH_TIMEOUT = 9   # seconds — single Playwright/Chrome fallback attempt
+
+# Domains that reliably paywall/block scraping — never worth a browser
+# render attempt; go straight to Blocked/Inaccessible + archive recovery.
+_PAYWALLED_DOMAINS = (
+    "nytimes.com", "wsj.com", "washingtonpost.com", "bloomberg.com",
+    "ft.com", "newyorker.com", "economist.com", "theathletic.com",
+    "businessinsider.com", "telegraph.co.uk", "thetimes.co.uk",
+)
+
+# Brave rate-limits aggressively; once we see a 429 stop hitting it for a
+# while instead of retrying every query in the same investigation.
+_BRAVE_BACKOFF_SECONDS = 600
+_brave_backoff_until = 0.0
+
 
 def _ts() -> str:
     return datetime.datetime.now().strftime("%H:%M:%S")
+
+
+def _looks_like_pdf(url: str) -> bool:
+    return url.split("?", 1)[0].lower().endswith(".pdf")
 
 
 def fetch_wikipedia_summary(case_name: str):
@@ -212,6 +234,38 @@ def _fetch_raw_url(url: str, timeout: int = 10) -> str:
         return ""
 
 
+def _fetch_raw_url_status(url: str, timeout: int = 10):
+    """Like _fetch_raw_url but also returns the HTTP status code (0 on
+    non-HTTP failures) so callers can react to rate-limiting (429)."""
+    try:
+        import ssl as _ssl
+        import urllib.request
+        _ctx = None
+        try:
+            import certifi as _certifi
+            _ctx = _ssl.create_default_context(cafile=_certifi.where())
+        except Exception:
+            pass
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/126.0 Safari/537.36 VerdictIn60/1.0"
+                )
+            }
+        )
+        kw = {"context": _ctx} if _ctx else {}
+        with urllib.request.urlopen(req, timeout=timeout, **kw) as r:
+            data = r.read(350_000)
+            return data.decode("utf-8", errors="replace"), r.status
+    except Exception as e:
+        code = getattr(e, "code", 0) or 0
+        print(f"[{_ts()} SOURCES] fetch FAILED — {type(e).__name__}: {e} — url={url[:120]}")
+        return "", code
+
+
 def _find_browser_executable() -> str:
     candidates = [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -280,11 +334,15 @@ def _fetch_playwright_rendered_html(url: str, timeout: int = 24) -> str:
     return ""
 
 
-def _fetch_browser_rendered_html(url: str, timeout: int = 24) -> str:
+def _fetch_browser_rendered_html(url: str, timeout: int = BROWSER_FETCH_TIMEOUT) -> str:
     """Render a public page with a real browser engine and return its DOM.
 
     This is a fallback for news sites that block urllib/requests but still load
     in a normal browser. It does not bypass paywalls or captchas.
+
+    Single attempt only (Playwright if available, else one Chrome DOM-dump) —
+    a page that fails once is marked Blocked/Inaccessible rather than retried
+    with alternate launch flags, so one slow URL can't eat minutes of budget.
     """
     html = _fetch_playwright_rendered_html(url, timeout=timeout)
     if html:
@@ -296,7 +354,7 @@ def _fetch_browser_rendered_html(url: str, timeout: int = 24) -> str:
         return ""
     import tempfile
     with tempfile.TemporaryDirectory(prefix="verdictin60-browser-") as profile_dir:
-        base_cmd = [
+        cmd = [
             browser,
             "--headless=new",
             "--no-sandbox",
@@ -315,23 +373,17 @@ def _fetch_browser_rendered_html(url: str, timeout: int = 24) -> str:
             "--dump-dom",
             url,
         ]
-        for cmd in (base_cmd, [arg.replace("--headless=new", "--headless") for arg in base_cmd]):
-            try:
-                r = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                )
-                html = r.stdout or ""
-                if r.returncode == 0 and len(html) > 500:
-                    print(f"[{_ts()} SOURCES] browser reader loaded {len(html)} bytes: {url[:90]}")
-                    return html
-                stderr = (r.stderr or "").strip().splitlines()
-                detail = stderr[-1] if stderr else f"returncode={r.returncode}"
-                print(f"[{_ts()} SOURCES] browser reader failed: {detail[:160]}")
-            except Exception as e:
-                print(f"[{_ts()} SOURCES] browser reader exception: {type(e).__name__}: {e}")
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            html = r.stdout or ""
+            if r.returncode == 0 and len(html) > 500:
+                print(f"[{_ts()} SOURCES] browser reader loaded {len(html)} bytes: {url[:90]}")
+                return html
+            stderr = (r.stderr or "").strip().splitlines()
+            detail = stderr[-1] if stderr else f"returncode={r.returncode}"
+            print(f"[{_ts()} SOURCES] browser reader failed: {detail[:160]}")
+        except Exception as e:
+            print(f"[{_ts()} SOURCES] browser reader exception: {type(e).__name__}: {e}")
     return ""
 
 
@@ -388,13 +440,6 @@ def _search_web(query: str, limit: int = 6) -> list:
             [],
         ),
         (
-            "yahoo",
-            f"https://search.yahoo.com/search?p={qenc}",
-            [
-                r'<a[^>]+href="([^"]{10,500})"[^>]*>(.*?)</a>',
-            ],
-        ),
-        (
             "mojeek",
             f"https://www.mojeek.com/search?q={qenc}&safe=0",
             # Mojeek result links are plain <a href="https://...">Title text</a>
@@ -424,8 +469,10 @@ def _search_web(query: str, limit: int = 6) -> list:
 
     _SKIP_DOMAINS = frozenset([
         "duckduckgo.com", "bing.com", "microsoft.com",
-        "google.com", "mojeek.com", "brave.com", "search.yahoo.com",
-        "login.yahoo.com", "guce.yahoo.com", "blocksurvey.io",
+        "google.com", "mojeek.com", "brave.com",
+        # yahoo.com catches search/login/mail/news.yahoo.com and generic
+        # yahoo search-result pages — Yahoo results are excluded entirely.
+        "yahoo.com", "blocksurvey.io",
         "buttondown.email", "blog.mojeek.com", "community.mojeek.com",
     ])
 
@@ -446,11 +493,24 @@ def _search_web(query: str, limit: int = 6) -> list:
     seen    = set()
     results = []
 
+    global _brave_backoff_until
+
     for engine, url, patterns in engines:
         if len(results) >= limit:
             break
+        if engine == "brave" and time.time() < _brave_backoff_until:
+            remaining = int(_brave_backoff_until - time.time())
+            print(f"[{_ts()} SOURCES] brave: skipped, rate-limit backoff for {remaining}s more")
+            continue
         print(f"[{_ts()} SOURCES] searching {engine}: {url[:140]}")
-        raw_html = _fetch_raw_url(url, timeout=12)
+        if engine == "brave":
+            raw_html, status = _fetch_raw_url_status(url, timeout=12)
+            if status == 429:
+                _brave_backoff_until = time.time() + _BRAVE_BACKOFF_SECONDS
+                print(f"[{_ts()} SOURCES] brave: HTTP 429 — backing off for {_BRAVE_BACKOFF_SECONDS}s")
+                continue
+        else:
+            raw_html = _fetch_raw_url(url, timeout=12)
         if not raw_html:
             print(f"[{_ts()} SOURCES] {engine}: empty response (blocked or SSL error)")
             continue
@@ -639,23 +699,42 @@ _TIER5_ENCYCLOPEDIA = (
     "britannica.com",
 )
 
+# Entertainment/listicle/blog domains that must never be classified as
+# Official/Agency/Reporting no matter what words appear in their headlines
+# (e.g. a ScreenRant article whose title happens to contain "prison" or
+# "court" must not be tagged Official).
+_ENTERTAINMENT_BLOG_DOMAINS = (
+    "screenrant.com", "cbr.com", "gamerant.com", "collider.com",
+    "looper.com", "thethings.com", "ranker.com", "thegamer.com",
+    "comicbookresources.com", "buzzfeed.com", "distractify.com",
+    "showbiz411.com", "cheatsheet.com", "wegotthiscovered.com",
+)
+
 
 def _classify_source(url: str, title: str = "") -> str:
-    """Return the tier label for a URL.  Wikipedia is always excluded externally."""
-    hay = f"{url} {title}".lower()
+    """Return the tier label for a URL.
+
+    Tier matching for Official/Agency/Reporting/Investigative/Encyclopedia is
+    based on the URL's domain only — never on headline text — so a headline
+    that happens to mention "court" or "prison" can't promote an entertainment
+    or blog site into a trusted tier. Wikipedia is always excluded externally.
+    """
     from urllib.parse import urlparse
     domain = urlparse(url).netloc.lower().lstrip("www.")
+
+    if any(d in domain for d in _ENTERTAINMENT_BLOG_DOMAINS):
+        return "Reference"
     # Tier 4 legal databases checked before generic "official" so Justia etc.
     # aren't mis-tagged as Official.
-    if any(m in hay for m in _TIER4_AGENCY):
+    if any(m in domain for m in _TIER4_AGENCY):
         return "Agency"
-    if any(m in hay for m in _TIER1_OFFICIAL):
+    if any(m in domain for m in _TIER1_OFFICIAL):
         return "Official"
-    if any(m in hay for m in _TIER2_REPORTING):
+    if any(m in domain for m in _TIER2_REPORTING):
         return "Reporting"
-    if any(m in hay for m in _TIER3_INVESTIGATIVE):
+    if any(m in domain for m in _TIER3_INVESTIGATIVE):
         return "Investigative"
-    if any(m in hay for m in _TIER5_ENCYCLOPEDIA):
+    if any(m in domain for m in _TIER5_ENCYCLOPEDIA):
         return "Encyclopedia"
     if re.search(r"\.(gov|us)$", domain) or any(
         marker in domain for marker in ("sheriff", "police", "county", "da-", "districtattorney")
@@ -669,13 +748,16 @@ def _classify_source(url: str, title: str = "") -> str:
     blog_hints = ("reddit", "youtube", "tiktok", "spotify", "podcast", "blogspot", "medium.com")
     if any(h in domain for h in blog_hints):
         return "Reference"
+    hay = f"{url} {title}".lower()
     if station_like or any(h in hay for h in local_news_hints):
         return "Reporting"
     return "Reference"
 
 
 def gather_verification_sources(case_name: str, original_context: str,
-                                wiki_title: str = "", wiki_facts: str = "") -> list:
+                                wiki_title: str = "", wiki_facts: str = "",
+                                deadline_seconds: float = None, max_sources: int = None,
+                                stats: dict = None) -> list:
     """Gather sources using a strict 5-tier priority system.
 
     Strategy (in order):
@@ -693,11 +775,37 @@ def gather_verification_sources(case_name: str, original_context: str,
 
     Wikipedia is orientation context only — never returned as a citable source.
     Stops early once ≥2 Tier-1/2 (Official + Reporting) sources are secured.
+
+    deadline_seconds / max_sources are an optional total-investigation budget
+    (existing callers keep unlimited behavior by leaving them None). If a
+    `stats` dict is passed, it is updated in place with elapsed_seconds,
+    sources_checked, skipped_slow_or_blocked, and stopped_reason so a caller
+    (e.g. the Research Hub UI) can surface why the search stopped.
     """
     first_name = case_name.split()[0].lower() if case_name.split() else ""
     last_name  = case_name.split()[-1].lower() if case_name.split() else ""
     sources: list  = []
     seen_urls: set = set()
+
+    _budget_start = time.time()
+    _budget = {"checked": 0, "skipped_slow_or_blocked": 0, "stopped_reason": "completed_full_search"}
+
+    def _budget_exceeded() -> bool:
+        if deadline_seconds and (time.time() - _budget_start) >= deadline_seconds:
+            _budget["stopped_reason"] = "deadline_exceeded"
+            return True
+        if max_sources and _budget["checked"] >= max_sources:
+            _budget["stopped_reason"] = "max_sources_reached"
+            return True
+        return False
+
+    def _finish() -> list:
+        if stats is not None:
+            stats["elapsed_seconds"] = round(time.time() - _budget_start, 1)
+            stats["sources_checked"] = _budget["checked"]
+            stats["skipped_slow_or_blocked"] = _budget["skipped_slow_or_blocked"]
+            stats["stopped_reason"] = _budget["stopped_reason"]
+        return sources
 
     def _normalize(s: str) -> str:
         """Lowercase + strip accents for accent-insensitive matching."""
@@ -747,16 +855,43 @@ def gather_verification_sources(case_name: str, original_context: str,
         if url in seen_urls or "wikipedia.org" in url.lower():
             return False
         seen_urls.add(url)
+        _budget["checked"] += 1
+        domain = url.split("/", 3)[2].lower().lstrip("www.") if "://" in url else ""
+
+        if _looks_like_pdf(url):
+            print(f"[{_ts()} SOURCES] fetching PDF ({tier_label}): {url[:110]}")
+            raw = _fetch_raw_url(url, timeout=DIRECT_FETCH_TIMEOUT)
+            if not raw:
+                if not _name_in(f"{title} {url}"):
+                    return False
+                _budget["skipped_slow_or_blocked"] += 1
+                kind = _classify_source(url, title)
+                sources.append({
+                    "title": title or url[:80], "url": url, "kind": kind, "tier": kind,
+                    "text": "", "blocked": True, "is_pdf": True,
+                    "inaccessible_reason": "PDF was not reachable within the fetch timeout",
+                })
+                return False
+            kind = _classify_source(url, title)
+            sources.append({
+                "title": title or _page_title(raw) or url[:80], "url": url, "kind": kind,
+                "tier": kind, "text": "", "blocked": False, "reader": "pdf-direct", "is_pdf": True,
+            })
+            print(f"[{_ts()} SOURCES] ADDED PDF ({kind}): {(title or url)[:65]}")
+            return True
+
         print(f"[{_ts()} SOURCES] fetching ({tier_label}): {url[:110]}")
-        raw = _fetch_raw_url(url, timeout=8)
+        raw = _fetch_raw_url(url, timeout=DIRECT_FETCH_TIMEOUT)
         reader = "direct"
         text = _extract_readable_text(raw)[:5000] if raw else ""
         if raw and (_looks_like_block_page(text) or len(text) < 450):
             print(f"[{_ts()} SOURCES] direct fetch looked blocked/thin, trying browser reader: {url[:90]}")
             raw = ""
             text = ""
-        if not raw:
-            browser_raw = _fetch_browser_rendered_html(url, timeout=24)
+        if not raw and any(p in domain for p in _PAYWALLED_DOMAINS):
+            print(f"[{_ts()} SOURCES] known paywalled domain, skipping browser fallback: {url[:90]}")
+        elif not raw:
+            browser_raw = _fetch_browser_rendered_html(url, timeout=BROWSER_FETCH_TIMEOUT)
             browser_text = _extract_readable_text(browser_raw)[:5000] if browser_raw else ""
             if browser_raw and not _looks_like_block_page(browser_text) and len(browser_text) >= 450:
                 raw = browser_raw
@@ -769,6 +904,7 @@ def gather_verification_sources(case_name: str, original_context: str,
             if not _name_in(f"{title} {url}"):
                 print(f"[{_ts()} SOURCES] blocked source not case-specific, skipping: {url[:90]}")
                 return False
+            _budget["skipped_slow_or_blocked"] += 1
             kind = _classify_source(url, title)
             sources.append({
                 "title": title or url[:80],
@@ -808,6 +944,8 @@ def gather_verification_sources(case_name: str, original_context: str,
         if kind == "Reference":
             return False
         seen_urls.add(url)
+        _budget["checked"] += 1
+        _budget["skipped_slow_or_blocked"] += 1
         sources.append({
             "title": title or url[:80],
             "url": url,
@@ -864,6 +1002,9 @@ def gather_verification_sources(case_name: str, original_context: str,
         official_queries.append(("Official", f'"{case_name}" "{loc}" court police prosecutor'))
 
     for tier_label, query in official_queries:
+        if _budget_exceeded():
+            print(f"[{_ts()} SOURCES] Budget exceeded before official/legal search completed")
+            return _finish()
         print(f"[{_ts()} SOURCES] query ({tier_label}): {query}")
         for result in _search_web(query, limit=4):
             if _is_discovery_only_result(result):
@@ -872,15 +1013,23 @@ def gather_verification_sources(case_name: str, original_context: str,
                 _add_discovered_source(result["url"], result.get("title", ""), tier_label)
             if _high_quality_count() >= 2:
                 print(f"[{_ts()} SOURCES] Early exit after official/legal search: {_high_quality_count()} Tier-1/2")
-                return sources
+                _budget["stopped_reason"] = "sufficient_sources_found"
+                return _finish()
+            if _budget_exceeded():
+                return _finish()
 
     # ── Step 2: CourtListener direct search ───────────────────────────────────
     print(f"[{_ts()} SOURCES] === Step 2: CourtListener direct search ===")
+    if _budget_exceeded():
+        return _finish()
     for cl_result in _search_courtlistener(case_name, limit=4):
         _add_source(cl_result["url"], cl_result["title"], "Agency")
         if _high_quality_count() >= 2:
             print(f"[{_ts()} SOURCES] Early exit after CourtListener: {_high_quality_count()} Tier-1/2")
-            return sources
+            _budget["stopped_reason"] = "sufficient_sources_found"
+            return _finish()
+        if _budget_exceeded():
+            return _finish()
 
     # ── Step 3: Wikipedia citations ───────────────────────────────────────────
     # Wikipedia's wikitext contains curated references with real source URLs —
@@ -899,6 +1048,8 @@ def gather_verification_sources(case_name: str, original_context: str,
     wiki_urls_sorted = sorted(wiki_urls, key=_url_tier_priority)
 
     for url in wiki_urls_sorted:
+        if _budget_exceeded():
+            return _finish()
         tier_label = _classify_source(url, "")
         if tier_label == "Encyclopedia":
             continue   # Britannica etc — skip, not useful as an independent source
@@ -907,7 +1058,8 @@ def gather_verification_sources(case_name: str, original_context: str,
         _add_source(url, "", tier_label)
         if _high_quality_count() >= 2:
             print(f"[{_ts()} SOURCES] Early exit after Wiki citations: {_high_quality_count()} Tier-1/2")
-            return sources
+            _budget["stopped_reason"] = "sufficient_sources_found"
+            return _finish()
 
     # ── Step 4: Reporting / investigative search fallback ───────────────────
     # This is intentionally after citations + legal search. It catches cases
@@ -929,6 +1081,9 @@ def gather_verification_sources(case_name: str, original_context: str,
         query_plan.insert(1, ("Reporting", f'"{case_name}" "{year_terms[0]}" news newspaper'))
 
     for tier_label, query in query_plan:
+        if _budget_exceeded():
+            print(f"[{_ts()} SOURCES] Budget exceeded before reporting search completed")
+            return _finish()
         print(f"[{_ts()} SOURCES] query ({tier_label}): {query}")
         for result in _search_web(query, limit=5):
             if _is_discovery_only_result(result):
@@ -937,7 +1092,10 @@ def gather_verification_sources(case_name: str, original_context: str,
                 _add_discovered_source(result["url"], result.get("title", ""), tier_label)
             if _high_quality_count() >= 2:
                 print(f"[{_ts()} SOURCES] Early exit after reporting search: {_high_quality_count()} Tier-1/2")
-                return sources
+                _budget["stopped_reason"] = "sufficient_sources_found"
+                return _finish()
+            if _budget_exceeded():
+                return _finish()
 
     print(f"[{_ts()} SOURCES] Search complete: {len(sources)} source(s), "
           f"{_high_quality_count()} high-quality, {_accessible_count()} accessible")
@@ -953,7 +1111,7 @@ def gather_verification_sources(case_name: str, original_context: str,
             "text": wiki_facts[:5000],
         })
 
-    return sources
+    return _finish()
 
 
 def format_sources_for_prompt(sources: list) -> str:

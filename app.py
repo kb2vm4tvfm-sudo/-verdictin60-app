@@ -17,6 +17,7 @@ import re
 import json
 import datetime
 import time
+import webbrowser
 from pathlib import Path
 import case_library
 from verdictin60_core.settings import load_settings, save_settings
@@ -38,6 +39,7 @@ from verdictin60_core.research import (
     verification_confidence, build_verified_fact_sheet,
     source_section_for_caption,
 )
+from verdictin60_core import research_hub
 from verdictin60_core.publishing import (
     fetch_buffer_scheduled_texts, next_available_date_safe,
     upload_video, schedule_to_buffer, buffer_video_not_ready,
@@ -54,7 +56,7 @@ from verdictin60_ui.widgets import (
 from verdictin60_ui.theme import (
     SIDEBAR_BG, SIDEBAR_WIDTH, BORDER, BORDER_LIGHT, INPUT_BG,
     CARD_ALT, CARD_HOVER, TEXT_SECONDARY, TEXT_DIM, TEXT_MUTED, FONT_FAMILY,
-    CARD, SURFACE, SUCCESS, WARNING_BG,
+    CARD, SURFACE, SUCCESS, WARNING_BG, SPACE_XS, SPACE_SM, SPACE_MD,
 )
 from verdictin60_ui.components import (
     make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
@@ -67,6 +69,10 @@ from verdictin60_ui.batch_tab import build_batch_tab
 from verdictin60_ui.url_import_tab import build_url_tab
 from verdictin60_ui.library_tab import build_library_tab
 from verdictin60_ui.recovery_tab import build_recovery_tab
+from verdictin60_ui.research_tab import (
+    build_research_tab, render_empty_state, render_case_summary,
+    render_stats_row, render_source_group, render_action_bar, GROUP_SECTIONS,
+)
 
 ASSETS_DIR    = Path(__file__).parent / "assets"
 OUTPUT_DIR    = Path(__file__).parent / "finished-reels"
@@ -464,6 +470,7 @@ class App(tk.Tk):
         ("single",   "▶", "SINGLE EXPORT"),
         ("batch",    "▤", "BATCH"),
         ("url",      "🔗", "URL IMPORT"),
+        ("research", "🔍", "RESEARCH HUB"),
         ("library",  "▥", "LIBRARY"),
         ("recovery", "⛭", "RECOVERY"),
     ]
@@ -532,14 +539,16 @@ class App(tk.Tk):
         self._single_frame  = tk.Frame(outer, bg=BG)
         self._batch_frame   = tk.Frame(outer, bg=BG)
         self._url_frame     = tk.Frame(outer, bg=BG)
+        self._research_frame = tk.Frame(outer, bg=BG)
         self._library_frame = tk.Frame(outer, bg=BG)
         self._recovery_frame = tk.Frame(outer, bg=BG)
         self._single_frame.pack(fill="both", expand=True)
-        # batch / url / library frames hidden initially
+        # batch / url / research / library frames hidden initially
 
         build_single_tab(self, self._single_frame)
         build_batch_tab(self, self._batch_frame)
         build_url_tab(self, self._url_frame)
+        build_research_tab(self, self._research_frame)
         build_library_tab(self, self._library_frame)
         build_recovery_tab(self, self._recovery_frame)
 
@@ -552,13 +561,14 @@ class App(tk.Tk):
         "single":   "SINGLE EXPORT",
         "batch":    "BATCH",
         "url":      "URL IMPORT",
+        "research": "RESEARCH HUB",
         "library":  "LIBRARY",
         "recovery": "RECOVERY",
     }
 
     def _switch_tab(self, tab: str):
-        for f in (self._single_frame, self._batch_frame,
-                  self._url_frame, self._library_frame, self._recovery_frame):
+        for f in (self._single_frame, self._batch_frame, self._url_frame,
+                  self._research_frame, self._library_frame, self._recovery_frame):
             f.pack_forget()
         for key, row in self._nav_rows.items():
             set_sidebar_active(row) if key == tab else set_sidebar_inactive(row)
@@ -569,6 +579,8 @@ class App(tk.Tk):
             self._batch_frame.pack(fill="both", expand=True)
         elif tab == "url":
             self._url_frame.pack(fill="both", expand=True)
+        elif tab == "research":
+            self._research_frame.pack(fill="both", expand=True)
         elif tab == "library":
             self._library_frame.pack(fill="both", expand=True)
             self._lib_tab.refresh()
@@ -707,6 +719,211 @@ class App(tk.Tk):
             except Exception:
                 return "Could not open the assets folder automatically.", "Please open the assets folder manually."
         return "No automatic repair is available for this issue.", "Manual review required."
+
+    # ── Research Hub tab ─────────────────────────────────────────────────────
+    # _build_research_tab lives in verdictin60_ui.research_tab; orchestration
+    # (threading, verdictin60_core.research_hub calls, case library / clipboard
+    # / browser actions) stays here, matching the URL Import tab's split.
+
+    RH_DEADLINE_SECONDS = 75
+    RH_MAX_SOURCES = 20
+
+    def _rh_set_status(self, text, error=False):
+        if error:
+            self._rh_show_error(text)
+        else:
+            self._rh_hide_error()
+        self._rh_status_lbl.config(text=text, fg=ERROR_RED if error else LIGHT_GRAY)
+
+    def _rh_start_investigate(self):
+        raw_clues = self._rh_clue_text.get("1.0", "end").strip()
+        if not raw_clues:
+            self._rh_set_status("Paste at least one clue — a name, URL, date, or keyword.", error=True)
+            return
+        self._research_last_result = None
+        _lbtn_disable(self._btn_rh_investigate, MUTED, TEXT_MUTED)
+        self._rh_set_status("⏳  Identifying case and gathering sources — this can take up to 90 seconds...")
+        render_empty_state(self._rh_results_host)
+        threading.Thread(target=self._rh_run_investigation, args=(raw_clues,), daemon=True).start()
+
+    def _rh_run_investigation(self, raw_clues: str):
+        try:
+            result = research_hub.investigate(
+                raw_clues,
+                deadline_seconds=self.RH_DEADLINE_SECONDS,
+                max_sources=self.RH_MAX_SOURCES,
+            )
+        except Exception as e:
+            import traceback
+            print(f"[RESEARCH HUB] investigation failed: {e}\n{traceback.format_exc()}")
+            self.after(0, lambda: self._rh_set_status(f"Investigation failed: {e}", error=True))
+            self.after(0, lambda: _lbtn_enable(self._btn_rh_investigate, CRIMSON, WHITE, CRIMSON_HOT))
+            return
+        self.after(0, lambda: self._rh_show_result(result))
+
+    def _rh_show_result(self, result: dict):
+        self._research_last_result = result
+        self._rh_last_caption = ""
+        _lbtn_enable(self._btn_rh_investigate, CRIMSON, WHITE, CRIMSON_HOT)
+        case = result.get("case", {})
+
+        if not case.get("case_title"):
+            self._rh_set_status(
+                f"No case could be identified from these clues "
+                f"({case.get('confidence_reason') or 'confidence too low'}).",
+                error=False,
+            )
+            render_empty_state(self._rh_results_host)
+            return
+
+        stats = result.get("stats") or {}
+        self._rh_set_status(
+            f"✅  Identified: {case['case_title']}  ({result.get('elapsed_seconds', 0)}s, "
+            f"{stats.get('sources_checked', 0)} source(s) checked)"
+        )
+        self._rh_render_results(result)
+
+    def _rh_render_results(self, result: dict):
+        host = self._rh_results_host
+        for child in host.winfo_children():
+            child.destroy()
+
+        case = result.get("case", {})
+        render_case_summary(host, case).pack(fill="x")
+        render_stats_row(host, result.get("stats") or {}, result.get("elapsed_seconds", 0)).pack(
+            fill="x", pady=(SPACE_SM, 0))
+
+        groups = research_hub.group_sources_for_display(result.get("sources", []))
+        for key, title, status in GROUP_SECTIONS:
+            render_source_group(host, title, groups.get(key, []), status).pack(
+                fill="x", pady=(SPACE_MD, 0))
+
+        self._rh_caption_frame = tk.Frame(host, bg=BG)
+        self._rh_caption_frame.pack(fill="x", pady=(SPACE_MD, 0))
+        tk.Label(self._rh_caption_frame, text="GENERATED CAPTION", bg=BG, fg=TEXT_MUTED,
+                 font=(FONT_FAMILY, 10, "bold")).pack(anchor="w")
+        cap_box = tk.Frame(self._rh_caption_frame, bg=INPUT_BG, highlightthickness=1,
+                           highlightbackground=BORDER)
+        cap_box.pack(fill="x", pady=(SPACE_XS, 0))
+        self._rh_caption_text = tk.Text(
+            cap_box, bg=INPUT_BG, fg=WHITE, insertbackground=WHITE,
+            font=(FONT_FAMILY, 11), bd=0, relief="flat", highlightthickness=0,
+            wrap="word", height=6,
+        )
+        self._rh_caption_text.pack(fill="x", padx=10, pady=10)
+        self._rh_caption_text.insert("1.0", "Click Generate Caption to create a caption from verified sources.")
+        self._rh_caption_text.config(state="disabled")
+
+        render_action_bar(host, [
+            ("SAVE TO CASE LIBRARY", self._rh_save_to_library),
+            ("GENERATE CAPTION", self._rh_generate_caption),
+            ("COPY ALL SOURCES", self._rh_copy_all_sources),
+            ("COPY ARCHIVE LINKS", self._rh_copy_archive_links),
+            ("OPEN ALL SOURCES", self._rh_open_all_sources),
+            ("EXPORT MARKDOWN", self._rh_export_markdown),
+        ])
+
+    def _rh_current_result(self) -> dict:
+        return getattr(self, "_research_last_result", None) or {}
+
+    def _rh_save_to_library(self):
+        result = self._rh_current_result()
+        case = result.get("case", {})
+        if not case.get("case_title"):
+            self._rh_set_status("Investigate a case before saving to the library.", error=True)
+            return
+        caption = getattr(self, "_rh_last_caption", "") or ""
+        self._library.save_case(
+            case_name=case["case_title"], caption=caption, status="Draft",
+        )
+        self._rh_set_status(f"✅  Saved “{case['case_title']}” to the Case Library.")
+
+    def _rh_generate_caption(self):
+        result = self._rh_current_result()
+        case = result.get("case", {})
+        if not case.get("case_title"):
+            self._rh_set_status("Investigate a case before generating a caption.", error=True)
+            return
+        self._rh_set_status("⏳  Generating caption from verified sources...")
+        threading.Thread(
+            target=self._rh_run_generate_caption,
+            args=(case, result.get("sources", [])),
+            daemon=True,
+        ).start()
+
+    def _rh_run_generate_caption(self, case: dict, sources: list):
+        try:
+            caption = research_hub.generate_caption(case, sources)
+        except Exception as e:
+            self.after(0, lambda: self._rh_set_status(f"Caption generation failed: {e}", error=True))
+            return
+        self.after(0, lambda: self._rh_apply_caption(caption))
+
+    def _rh_apply_caption(self, caption: str):
+        self._rh_last_caption = caption
+        if hasattr(self, "_rh_caption_text") and self._rh_caption_text.winfo_exists():
+            self._rh_caption_text.config(state="normal")
+            self._rh_caption_text.delete("1.0", "end")
+            self._rh_caption_text.insert("1.0", caption)
+        self._rh_set_status("✅  Caption generated from verified sources.")
+
+    def _rh_copy_all_sources(self):
+        result = self._rh_current_result()
+        sources = [s for s in result.get("sources", []) if s.get("tier") != "Wikipedia"]
+        if not sources:
+            self._rh_set_status("No sources to copy yet.", error=True)
+            return
+        lines = [f"{s.get('kind', 'Reference')} — {s.get('title') or s.get('url')} — {s.get('url', '')}"
+                 for s in sources]
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(lines))
+        self._rh_set_status(f"✅  Copied {len(lines)} source(s) to the clipboard.")
+
+    def _rh_copy_archive_links(self):
+        result = self._rh_current_result()
+        lines = []
+        for s in result.get("sources", []):
+            archive = s.get("archive") or {}
+            if archive.get("archive_url"):
+                lines.append(f"{s.get('title') or s.get('url')} — {archive['archive_url']}")
+            for m in archive.get("manual_links", []):
+                lines.append(f"{s.get('title') or s.get('url')} — {m['provider']}: {m['url']}")
+        if not lines:
+            self._rh_set_status("No archive links available yet.", error=True)
+            return
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(lines))
+        self._rh_set_status(f"✅  Copied {len(lines)} archive link(s) to the clipboard.")
+
+    def _rh_open_all_sources(self):
+        result = self._rh_current_result()
+        sources = [s for s in result.get("sources", []) if s.get("tier") != "Wikipedia" and s.get("url")]
+        if not sources:
+            self._rh_set_status("No sources to open yet.", error=True)
+            return
+        for s in sources[:25]:
+            url = s.get("archive", {}).get("archive_url") or s.get("url")
+            webbrowser.open(url)
+        self._rh_set_status(f"✅  Opened {min(len(sources), 25)} source(s) in your browser.")
+
+    def _rh_export_markdown(self):
+        result = self._rh_current_result()
+        case = result.get("case", {})
+        if not case.get("case_title"):
+            self._rh_set_status("Investigate a case before exporting.", error=True)
+            return
+        default_name = name_to_filename(case["case_title"]) + ".md"
+        path = filedialog.asksaveasfilename(
+            defaultextension=".md", initialfile=default_name,
+            filetypes=[("Markdown", "*.md"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(research_hub.export_markdown(result), encoding="utf-8")
+            self._rh_set_status(f"✅  Exported research to {Path(path).name}.")
+        except Exception as e:
+            self._rh_set_status(f"Export failed: {e}", error=True)
 
     # ── Batch tab ─────────────────────────────────────────────────────────────
     # _build_batch_tab moved to verdictin60_ui.batch_tab (Phase 8 refactor).
