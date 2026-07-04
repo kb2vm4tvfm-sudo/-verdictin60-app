@@ -17,6 +17,7 @@ import re
 import json
 import datetime
 import time
+import webbrowser
 from pathlib import Path
 import case_library
 from verdictin60_core.settings import load_settings, save_settings
@@ -46,6 +47,7 @@ from verdictin60_core.publishing import (
 from verdictin60_core.recovery import (
     log_recovery_event, scan_recovery_health, recovery_plain_message,
 )
+from verdictin60_core.research_hub import run_investigation, build_research_caption
 from verdictin60_core.utils import _ts, write_log_lines
 from verdictin60_ui.widgets import (
     BG, CRIMSON, CRIMSON_HOT, ERROR_RED, WHITE, OFF_WHITE, MUTED, LIGHT_GRAY,
@@ -59,7 +61,7 @@ from verdictin60_ui.theme import (
 from verdictin60_ui.components import (
     make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
     stop_loading_state, make_error_banner, make_source_list, make_card, card_body,
-    make_confidence_badge,
+    make_confidence_badge, make_loading_state,
 )
 from verdictin60_ui.settings_tab import SettingsDialog
 from verdictin60_ui.single_export_tab import build_single_tab
@@ -67,6 +69,7 @@ from verdictin60_ui.batch_tab import build_batch_tab
 from verdictin60_ui.url_import_tab import build_url_tab
 from verdictin60_ui.library_tab import build_library_tab
 from verdictin60_ui.recovery_tab import build_recovery_tab
+from verdictin60_ui.research_tab import build_research_tab
 
 ASSETS_DIR    = Path(__file__).parent / "assets"
 OUTPUT_DIR    = Path(__file__).parent / "finished-reels"
@@ -464,6 +467,7 @@ class App(tk.Tk):
         ("single",   "▶", "SINGLE EXPORT"),
         ("batch",    "▤", "BATCH"),
         ("url",      "🔗", "URL IMPORT"),
+        ("research", "🔎", "RESEARCH HUB"),
         ("library",  "▥", "LIBRARY"),
         ("recovery", "⛭", "RECOVERY"),
     ]
@@ -532,14 +536,16 @@ class App(tk.Tk):
         self._single_frame  = tk.Frame(outer, bg=BG)
         self._batch_frame   = tk.Frame(outer, bg=BG)
         self._url_frame     = tk.Frame(outer, bg=BG)
+        self._research_frame = tk.Frame(outer, bg=BG)
         self._library_frame = tk.Frame(outer, bg=BG)
         self._recovery_frame = tk.Frame(outer, bg=BG)
         self._single_frame.pack(fill="both", expand=True)
-        # batch / url / library frames hidden initially
+        # batch / url / research / library frames hidden initially
 
         build_single_tab(self, self._single_frame)
         build_batch_tab(self, self._batch_frame)
         build_url_tab(self, self._url_frame)
+        build_research_tab(self, self._research_frame)
         build_library_tab(self, self._library_frame)
         build_recovery_tab(self, self._recovery_frame)
 
@@ -552,13 +558,14 @@ class App(tk.Tk):
         "single":   "SINGLE EXPORT",
         "batch":    "BATCH",
         "url":      "URL IMPORT",
+        "research": "RESEARCH HUB",
         "library":  "LIBRARY",
         "recovery": "RECOVERY",
     }
 
     def _switch_tab(self, tab: str):
-        for f in (self._single_frame, self._batch_frame,
-                  self._url_frame, self._library_frame, self._recovery_frame):
+        for f in (self._single_frame, self._batch_frame, self._url_frame,
+                  self._research_frame, self._library_frame, self._recovery_frame):
             f.pack_forget()
         for key, row in self._nav_rows.items():
             set_sidebar_active(row) if key == tab else set_sidebar_inactive(row)
@@ -569,6 +576,8 @@ class App(tk.Tk):
             self._batch_frame.pack(fill="both", expand=True)
         elif tab == "url":
             self._url_frame.pack(fill="both", expand=True)
+        elif tab == "research":
+            self._research_frame.pack(fill="both", expand=True)
         elif tab == "library":
             self._library_frame.pack(fill="both", expand=True)
             self._lib_tab.refresh()
@@ -707,6 +716,286 @@ class App(tk.Tk):
             except Exception:
                 return "Could not open the assets folder automatically.", "Please open the assets folder manually."
         return "No automatic repair is available for this issue.", "Manual review required."
+
+    # ── Research Hub tab ──────────────────────────────────────────────────────
+    # _build_research_tab moved to verdictin60_ui.research_tab.
+
+    def _research_set_status(self, msg: str, error: bool = False):
+        for child in self._research_status_host.winfo_children():
+            child.destroy()
+        if not msg:
+            return
+        if error:
+            make_error_banner(self._research_status_host, msg, title="Investigation error").pack(fill="x")
+        else:
+            loading = make_loading_state(self._research_status_host, msg, bg=BG)
+            loading.pack(anchor="w")
+            self._research_status_host._loading_frame = loading
+
+    def _research_start_investigation(self):
+        if getattr(self, "_research_running", False):
+            return
+        raw_text = self._research_input.get("1.0", "end").strip()
+        if not raw_text:
+            self._research_set_status("Paste at least one clue, name, or link before investigating.", error=True)
+            return
+        self._research_running = True
+        _lbtn_disable(self._btn_investigate, MUTED, TEXT_MUTED)
+        for child in self._research_results_host.winfo_children():
+            child.destroy()
+        self._research_set_status("Investigating…")
+        threading.Thread(target=self._research_run, args=(raw_text,), daemon=True).start()
+
+    def _research_run(self, raw_text: str):
+        def progress(msg):
+            self.after(0, lambda: self._research_set_status(msg))
+        try:
+            result = run_investigation(raw_text, progress_cb=progress)
+        except Exception as e:
+            self.after(0, lambda: self._research_finish_error(str(e)))
+            return
+        self.after(0, lambda: self._research_finish(result))
+
+    def _research_finish_error(self, message: str):
+        self._research_running = False
+        _lbtn_enable(self._btn_investigate, CRIMSON, WHITE, CRIMSON_HOT)
+        self._research_set_status(f"Investigation failed: {message}", error=True)
+
+    def _research_finish(self, result: dict):
+        self._research_running = False
+        _lbtn_enable(self._btn_investigate, CRIMSON, WHITE, CRIMSON_HOT)
+        self._research_last_result = result
+        self._research_set_status("")
+        self._research_render_results(result)
+
+    def _research_render_results(self, result: dict):
+        host = self._research_results_host
+        for child in host.winfo_children():
+            child.destroy()
+        case = result.get("case", {})
+        case_title = (case.get("case_title") or "").strip()
+
+        summary_card = make_card(host, padx=18, pady=16)
+        summary_card.pack(fill="x", pady=(0, 14))
+        body = card_body(summary_card)
+
+        if not case_title:
+            tk.Label(body, text="No case could be identified", bg=CARD, fg=WHITE,
+                     font=("Helvetica", 13, "bold")).pack(anchor="w")
+            tk.Label(
+                body, text=case.get("reasoning", "The input did not contain enough detail."),
+                bg=CARD, fg=LIGHT_GRAY, font=("Helvetica", 10), wraplength=700, justify="left"
+            ).pack(anchor="w", pady=(6, 0))
+            return
+
+        header = tk.Frame(body, bg=CARD)
+        header.pack(fill="x", anchor="w")
+        tk.Label(header, text=case_title, bg=CARD, fg=WHITE,
+                 font=("Helvetica", 15, "bold")).pack(side="left")
+        make_confidence_badge(
+            header, result.get("confidence_label", "Very low"),
+            result.get("confidence_reason", ""), bg=CARD,
+        ).pack(side="left", padx=(12, 0))
+
+        if case.get("aliases"):
+            tk.Label(body, text="Also known as: " + ", ".join(case["aliases"]),
+                     bg=CARD, fg=LIGHT_GRAY, font=("Helvetica", 9, "italic")
+                     ).pack(anchor="w", pady=(6, 0))
+
+        if case.get("reasoning"):
+            tk.Label(body, text=case["reasoning"], bg=CARD, fg=LIGHT_GRAY,
+                     font=("Helvetica", 10), wraplength=700, justify="left"
+                     ).pack(anchor="w", pady=(8, 0))
+
+        for label, key in (("Victims", "victims"), ("Suspects", "suspects"),
+                           ("Related people", "related_people")):
+            values = case.get(key) or []
+            if values:
+                tk.Label(body, text=f"{label}: " + ", ".join(values),
+                         bg=CARD, fg=WHITE, font=("Helvetica", 9)
+                         ).pack(anchor="w", pady=(6, 0))
+        if case.get("outcome"):
+            tk.Label(body, text=f"Outcome: {case['outcome']}", bg=CARD, fg=WHITE,
+                     font=("Helvetica", 9)).pack(anchor="w", pady=(6, 0))
+        if case.get("timeline"):
+            tk.Label(body, text="Timeline:", bg=CARD, fg=WHITE,
+                     font=("Helvetica", 9, "bold")).pack(anchor="w", pady=(8, 0))
+            for event in case["timeline"][:12]:
+                tk.Label(body, text=f"•  {event}", bg=CARD, fg=LIGHT_GRAY,
+                         font=("Helvetica", 9), wraplength=680, justify="left", anchor="w"
+                         ).pack(anchor="w")
+
+        sources = result.get("sources", {})
+        self._research_source_group(host, "Official Sources", sources.get("official", []))
+        self._research_source_group(host, "Reporting (Accessible)", sources.get("reporting_accessible", []))
+        self._research_source_group(host, "Reporting (Archived)", sources.get("reporting_archived", []), archived=True)
+        self._research_source_group(host, "Blocked / Inaccessible", sources.get("blocked", []), blocked=True)
+
+        actions = tk.Frame(host, bg=BG)
+        actions.pack(fill="x", pady=(14, 0))
+        for text, cmd in (
+            ("SAVE TO CASE LIBRARY", self._research_save_to_library),
+            ("GENERATE CAPTION", self._research_generate_caption),
+            ("COPY ALL SOURCES", self._research_copy_all_sources),
+            ("COPY ARCHIVE LINKS", self._research_copy_archive_links),
+            ("OPEN ALL SOURCES", self._research_open_all_sources),
+            ("EXPORT RESEARCH (MARKDOWN)", self._research_export_markdown),
+        ):
+            _make_lbtn(
+                actions, text, cmd, bg=INPUT_BG, fg=WHITE, hover_bg=BORDER,
+                font=("Helvetica", 9, "bold"), pady=10, padx=12,
+            ).pack(side="left", padx=(0, 8), pady=(0, 8))
+
+        self._research_action_status = tk.Label(
+            host, text="", bg=BG, fg=LIGHT_GRAY, font=("Helvetica", 9), anchor="w"
+        )
+        self._research_action_status.pack(anchor="w")
+
+    def _research_source_group(self, parent, heading: str, sources: list,
+                               archived: bool = False, blocked: bool = False):
+        card = make_card(parent, padx=14, pady=12)
+        card.pack(fill="x", pady=(0, 10))
+        body = card_body(card)
+        tk.Label(body, text=f"{heading}  ({len(sources)})", bg=CARD, fg=WHITE,
+                 font=("Helvetica", 10, "bold")).pack(anchor="w")
+        if not sources:
+            tk.Label(body, text="None found.", bg=CARD, fg=TEXT_DIM,
+                     font=("Helvetica", 9)).pack(anchor="w", pady=(4, 0))
+            return
+        for src in sources[:12]:
+            row = tk.Frame(body, bg=CARD)
+            row.pack(fill="x", anchor="w", pady=(6, 0))
+            make_badge(row, src.get("kind", "Reference"),
+                      status="neutral" if not blocked else "error").pack(side="left", padx=(0, 8))
+            title = src.get("title") or src.get("url", "")
+            tk.Label(row, text=f"{title}  —  {src.get('url', '')}", bg=CARD, fg=LIGHT_GRAY,
+                     font=("Helvetica", 9), wraplength=680, justify="left", anchor="w"
+                     ).pack(side="left", fill="x", expand=True)
+            if archived and src.get("archive_url"):
+                tk.Label(body, text=f"    Archived via {src.get('archive_provider', 'Archive')}: {src['archive_url']}",
+                         bg=CARD, fg=SUCCESS, font=("Helvetica", 8)).pack(anchor="w")
+            if blocked and src.get("manual_archive_links"):
+                links = "  ·  ".join(src["manual_archive_links"].keys())
+                tk.Label(body, text=f"    Manual archive lookup available: {links}",
+                         bg=CARD, fg=TEXT_DIM, font=("Helvetica", 8)).pack(anchor="w")
+
+    def _research_set_action_status(self, msg: str):
+        if hasattr(self, "_research_action_status") and self._research_action_status.winfo_exists():
+            self._research_action_status.config(text=msg)
+
+    def _research_save_to_library(self):
+        result = getattr(self, "_research_last_result", None)
+        if not result:
+            return
+        case_title = ((result.get("case", {}) or {}).get("case_title") or "").strip()
+        if not case_title:
+            self._research_set_action_status("No identified case to save.")
+            return
+        all_sources = result.get("all_sources", [])
+        source_url = next((s.get("url", "") for s in all_sources if not s.get("blocked")), "")
+        try:
+            self._library.save_case(
+                case_name=case_title, filename="", status="Draft",
+                source_url=source_url, output_path=None,
+            )
+            self._research_set_action_status(f"Saved \"{case_title}\" to the Case Library.")
+        except Exception as e:
+            self._research_set_action_status(f"Could not save to library: {e}")
+
+    def _research_generate_caption(self):
+        result = getattr(self, "_research_last_result", None)
+        if not result:
+            return
+        case_title = ((result.get("case", {}) or {}).get("case_title") or "").strip()
+        if not case_title:
+            self._research_set_action_status("No identified case to caption.")
+            return
+        self._research_set_action_status("Generating caption from verified research…")
+
+        def _run():
+            caption = build_research_caption(case_title, result.get("all_sources", []))
+            def _done():
+                self.clipboard_clear()
+                self.clipboard_append(caption)
+                self._research_set_action_status("Caption generated and copied to clipboard.")
+            self.after(0, _done)
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _research_copy_all_sources(self):
+        result = getattr(self, "_research_last_result", None)
+        if not result:
+            return
+        urls = [s.get("url", "") for s in result.get("all_sources", []) if s.get("url")]
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(urls))
+        self._research_set_action_status(f"Copied {len(urls)} source URL(s) to clipboard.")
+
+    def _research_copy_archive_links(self):
+        result = getattr(self, "_research_last_result", None)
+        if not result:
+            return
+        lines = []
+        for src in result.get("sources", {}).get("reporting_archived", []):
+            if src.get("archive_url"):
+                lines.append(src["archive_url"])
+        for src in result.get("sources", {}).get("blocked", []):
+            for link in (src.get("manual_archive_links") or {}).values():
+                lines.append(link)
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(lines))
+        self._research_set_action_status(f"Copied {len(lines)} archive link(s) to clipboard.")
+
+    def _research_open_all_sources(self):
+        result = getattr(self, "_research_last_result", None)
+        if not result:
+            return
+        urls = [s.get("url", "") for s in result.get("all_sources", []) if s.get("url")]
+        for url in urls[:15]:
+            webbrowser.open(url)
+        self._research_set_action_status(f"Opened {min(len(urls), 15)} source(s) in your browser.")
+
+    def _research_export_markdown(self):
+        result = getattr(self, "_research_last_result", None)
+        if not result:
+            return
+        case = result.get("case", {})
+        case_title = (case.get("case_title") or "").strip() or "research"
+        path = filedialog.asksaveasfilename(
+            title="Export Research", initialfile=f"{name_to_filename(case_title)}-research.md",
+            defaultextension=".md", filetypes=[("Markdown", "*.md")],
+        )
+        if not path:
+            return
+        lines = [f"# {case_title}", "", f"**Confidence:** {result.get('confidence_label', '')} "
+                 f"— {result.get('confidence_reason', '')}", ""]
+        if case.get("reasoning"):
+            lines += [case["reasoning"], ""]
+        for label, key in (("Victims", "victims"), ("Suspects", "suspects"),
+                           ("Related people", "related_people")):
+            if case.get(key):
+                lines.append(f"**{label}:** {', '.join(case[key])}")
+        if case.get("outcome"):
+            lines.append(f"**Outcome:** {case['outcome']}")
+        if case.get("timeline"):
+            lines += ["", "## Timeline"] + [f"- {e}" for e in case["timeline"]]
+        sources = result.get("sources", {})
+        for heading, key in (("Official Sources", "official"), ("Reporting (Accessible)", "reporting_accessible"),
+                             ("Reporting (Archived)", "reporting_archived"), ("Blocked / Inaccessible", "blocked")):
+            lines += ["", f"## {heading}"]
+            group = sources.get(key, [])
+            if not group:
+                lines.append("None found.")
+                continue
+            for src in group:
+                extra = ""
+                if src.get("archive_url"):
+                    extra = f" (archived via {src.get('archive_provider', 'Archive')}: {src['archive_url']})"
+                lines.append(f"- [{src.get('title', src.get('url', ''))}]({src.get('url', '')}){extra}")
+        try:
+            Path(path).write_text("\n".join(lines), encoding="utf-8")
+            self._research_set_action_status(f"Exported to {Path(path).name}.")
+        except Exception as e:
+            self._research_set_action_status(f"Export failed: {e}")
 
     # ── Batch tab ─────────────────────────────────────────────────────────────
     # _build_batch_tab moved to verdictin60_ui.batch_tab (Phase 8 refactor).
