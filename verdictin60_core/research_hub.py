@@ -153,13 +153,14 @@ def _strip_code_fences(text: str) -> str:
     return text.strip()
 
 
-def _extract_first_json_object(text: str):
-    """Scan for the first balanced {...} object, tolerating stray prose or
-    reasoning text before/after it. Brace-depth aware so braces inside JSON
-    string values don't break the scan."""
+def _find_first_balanced_region(text: str, open_ch: str, close_ch: str):
+    """Scan for the first balanced open_ch...close_ch region, tolerating
+    stray prose or reasoning text before/after it. Brace-depth aware so
+    braces/brackets inside JSON string values don't break the scan. Returns
+    the raw substring (not parsed), or None if no balanced region exists."""
     search_from = 0
     while True:
-        start = text.find('{', search_from)
+        start = text.find(open_ch, search_from)
         if start == -1:
             return None
         depth = 0
@@ -177,28 +178,143 @@ def _extract_first_json_object(text: str):
                 continue
             if ch == '"':
                 in_string = True
-            elif ch == '{':
+            elif ch == open_ch:
                 depth += 1
-            elif ch == '}':
+            elif ch == close_ch:
                 depth -= 1
                 if depth == 0:
-                    try:
-                        return json.loads(text[start:i + 1])
-                    except Exception:
-                        break
+                    return text[start:i + 1]
         search_from = start + 1
 
 
-def _parse_identify_json(raw: str):
-    if not raw or not raw.strip():
-        return None
-    text = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL | re.IGNORECASE).strip()
-    text = _strip_code_fences(text)
+class _IdentifyParseError(Exception):
+    """Raised when the identify AI response can't be parsed. The message is
+    always one of a small set of safe, specific reasons — it never includes
+    the raw response text (that's logged separately as a sanitized preview)."""
+
+
+_SECRET_LIKE_PATTERNS = (
+    re.compile(r'(?i)bearer\s+[A-Za-z0-9\-_.]+'),
+    re.compile(r'(?i)(api[_-]?key|authorization)("|\')?\s*[:=]\s*("|\')?[A-Za-z0-9\-_.]{8,}'),
+)
+
+
+def _sanitize_ai_response_preview(raw: str, limit: int = 500) -> str:
+    """Build a short, safe preview of a raw AI response for debug logging
+    when identify JSON parsing fails. Callers must only pass the model's own
+    response text — never the prompt or request headers. The redaction below
+    is defense-in-depth in case a model ever echoes something secret-shaped."""
+    text = re.sub(r'\s+', ' ', raw or "").strip()
+    for pattern in _SECRET_LIKE_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    if len(text) > limit:
+        text = text[:limit].rstrip() + "…"
+    return text
+
+
+def _strip_reasoning_labels(text: str) -> str:
+    """Strip a leading/trailing 'Reasoning:' / 'Answer:' style label that some
+    models prepend or append despite being told to return only JSON."""
+    label = r'(?:reasoning|answer|response|output|result)\s*:\s*'
+    text = re.sub(rf'^\s*{label}', '', text, flags=re.IGNORECASE)
+    text = re.sub(rf'\s*{label}$', '', text, flags=re.IGNORECASE)
+    return text.strip()
+
+
+def _normalize_quotes_if_safe(text: str) -> str:
+    """Best-effort normalize single-quoted, Python-dict-style output into
+    double-quoted JSON. Only attempted when the text has no double quotes at
+    all, so real apostrophes inside double-quoted string values are never
+    touched."""
+    if '"' in text or "'" not in text:
+        return text
+    return text.replace("'", '"')
+
+
+def _decode_json_ish(text: str):
+    """Try to decode `text` as JSON directly, then fall back to scanning for
+    the first balanced {...} region. Returns (data, found_object_shape) —
+    found_object_shape is True whenever an object-like region was located,
+    even if it ultimately failed to decode (used to pick a specific error)."""
     try:
-        return json.loads(text)
+        return json.loads(text), True
     except Exception:
         pass
-    return _extract_first_json_object(text)
+    region = _find_first_balanced_region(text, '{', '}')
+    if region is None:
+        return None, False
+    try:
+        return json.loads(region), True
+    except Exception:
+        return None, True
+
+
+def _extract_tool_call_arguments(data: dict):
+    """Pull the first object-like `arguments` payload out of an OpenAI/NVIDIA
+    style tool-call response, e.g.
+    {"tool_calls": [{"function": {"arguments": "{...}"}}]}."""
+    calls = data.get("tool_calls")
+    if not isinstance(calls, list):
+        return None
+    for call in calls:
+        fn = call.get("function") if isinstance(call, dict) else None
+        args = fn.get("arguments") if isinstance(fn, dict) else None
+        if isinstance(args, str):
+            try:
+                parsed = json.loads(args)
+            except Exception:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        elif isinstance(args, dict):
+            return args
+    return None
+
+
+def _parse_identify_json(raw: str) -> dict:
+    """Parse the AI's identify response into a dict, tolerating real-world
+    formatting deviations: code fences, stray reasoning text, JSON arrays,
+    single-quoted JSON, and tool-call style wrapper payloads.
+
+    Raises _IdentifyParseError with one of: "no JSON object found",
+    "JSON decode error", "missing required fields", "unexpected schema".
+    Never includes the raw response text in the exception.
+    """
+    if not raw or not raw.strip():
+        raise _IdentifyParseError("no JSON object found")
+
+    text = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL | re.IGNORECASE).strip()
+    text = _strip_code_fences(text)
+    text = _strip_reasoning_labels(text)
+    if not text:
+        raise _IdentifyParseError("no JSON object found")
+
+    data, found_object_shape = _decode_json_ish(text)
+    if data is None:
+        normalized = _normalize_quotes_if_safe(text)
+        if normalized != text:
+            data, found_normalized_shape = _decode_json_ish(normalized)
+            found_object_shape = found_object_shape or found_normalized_shape
+
+    if isinstance(data, dict) and "tool_calls" in data and (
+            "identified" not in data or "case_title" not in data):
+        tool_data = _extract_tool_call_arguments(data)
+        if tool_data is not None:
+            data = tool_data
+
+    if data is None:
+        raise _IdentifyParseError("JSON decode error" if found_object_shape else "no JSON object found")
+
+    if isinstance(data, list):
+        data = next((item for item in data if isinstance(item, dict)), None)
+
+    if not isinstance(data, dict):
+        raise _IdentifyParseError("unexpected schema")
+
+    if "identified" not in data or "case_title" not in data:
+        raise _IdentifyParseError("missing required fields")
+
+    return data
 
 
 def _str_list(data: dict, key: str) -> list:
@@ -221,7 +337,7 @@ def _normalize_identified_case(data: dict) -> dict:
             "victims": [], "suspects": [], "related_people": [], "timeline": [], "outcome": "",
             "fallback": False,
         }
-    confidence = str(data.get("confidence", "")).strip().title()
+    confidence = re.sub(r'\s+', ' ', str(data.get("confidence", "")).strip()).title()
     if confidence not in ("High", "Medium", "Low", "Very Low"):
         confidence = "Low"
     return {
@@ -306,11 +422,15 @@ def identify_case(raw_clue_text: str) -> dict:
             "fallback": False,
         }
     prompt = _build_identify_prompt(clues)
+    raw = ""
     try:
         raw = ai_identify(prompt)
         data = _parse_identify_json(raw)
-        if data is None:
-            raise ValueError("AI response was not valid JSON")
+    except _IdentifyParseError as e:
+        preview = _sanitize_ai_response_preview(raw)
+        print(f"[RESEARCH_HUB] identify_case AI response was not valid JSON ({e}); "
+              f"response preview: {preview!r}")
+        return _fallback_identified_case(clues, timed_out=False)
     except Exception as e:
         timed_out = is_timeout_error(e)
         print(f"[RESEARCH_HUB] identify_case AI call failed: {'timed out' if timed_out else e}")

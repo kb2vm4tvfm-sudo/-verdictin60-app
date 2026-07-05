@@ -265,9 +265,22 @@ def _nvidia_call(model: str, prompt: str, timeout: int = 60, num_predict: int = 
     except Exception as e:
         raise NvidiaAPIError(f"NVIDIA NIM request failed: {e}") from e
     try:
-        return data["choices"][0]["message"]["content"] or ""
+        message = data["choices"][0]["message"]
     except (KeyError, IndexError, TypeError) as e:
         raise NvidiaAPIError("NVIDIA NIM response missing expected content") from e
+    content = message.get("content") or ""
+    if content:
+        return content
+    # Some NVIDIA NIM models emit a tool-call style response (arguments in
+    # message["tool_calls"]) instead of plain content. Hand back the raw
+    # tool_calls JSON so callers can still recover the object-like payload.
+    tool_calls = message.get("tool_calls")
+    if isinstance(tool_calls, list) and tool_calls:
+        try:
+            return json.dumps({"tool_calls": tool_calls})
+        except (TypeError, ValueError):
+            pass
+    return content
 
 
 def nvidia_generate(prompt: str, task: str = "caption", timeout: int = 60,
