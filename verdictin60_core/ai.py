@@ -289,8 +289,17 @@ def nvidia_generate(prompt: str, task: str = "caption", timeout: int = 60,
     return _nvidia_call(get_nvidia_model(task), prompt, timeout, num_predict, temperature=temperature)
 
 
-def nvidia_identify(prompt: str, timeout: int = 30) -> str:
-    return _nvidia_call(get_nvidia_model("identify"), prompt, timeout, 400,
+# Identify responses are a single JSON object with several list fields
+# (aliases/victims/suspects/related_people/timeline). 400 tokens was too
+# tight — real NVIDIA NIM responses were observed getting cut off mid-JSON
+# (see issue #59), so the parser would receive a truncated, unbalanced
+# object. Raised enough to fit the full (now field-capped, see
+# _IDENTIFY_PROMPT_TEMPLATE) schema with headroom.
+NVIDIA_IDENTIFY_MAX_TOKENS = 900
+
+
+def nvidia_identify(prompt: str, timeout: int = 45) -> str:
+    return _nvidia_call(get_nvidia_model("identify"), prompt, timeout, NVIDIA_IDENTIFY_MAX_TOKENS,
                         temperature=NVIDIA_LOW_TEMPERATURE)
 
 
@@ -330,7 +339,7 @@ def ai_identify(prompt: str, timeout: int = None) -> str:
     mode = get_ai_provider_mode()
     if mode == "Cloud only" and nvidia_available():
         try:
-            return nvidia_identify(prompt, timeout=timeout or 30)
+            return nvidia_identify(prompt, timeout=timeout or 45)
         except Exception as e:
             print(f"[AI] NVIDIA NIM identify failed in Cloud-only mode ({e}); falling back to Ollama")
             return ollama_identify(prompt, timeout=timeout)
@@ -340,7 +349,7 @@ def ai_identify(prompt: str, timeout: int = None) -> str:
         if mode == "Cloud fallback" and nvidia_available():
             print(f"[AI] Ollama identify failed ({e}); trying NVIDIA NIM fallback")
             try:
-                return nvidia_identify(prompt, timeout=timeout or 30)
+                return nvidia_identify(prompt, timeout=timeout or 45)
             except Exception as nvidia_exc:
                 print(f"[AI] NVIDIA NIM identify fallback also failed: {nvidia_exc}")
         raise

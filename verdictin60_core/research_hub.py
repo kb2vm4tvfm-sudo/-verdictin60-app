@@ -105,25 +105,27 @@ CRITICAL OUTPUT FORMAT — follow exactly:
 - Respond with ONLY a single valid JSON object. Nothing else.
 - No markdown. No code fences (no ``` of any kind).
 - No explanation, preamble, reasoning, or commentary before or after the JSON.
-- Do not think out loud — output only the final JSON object.
+- Do not think out loud — output only the final JSON object. Keep every field short so the whole \
+response fits in a small output budget; do not pad or elaborate.
 - The JSON object must contain exactly these keys:
 {{
   "identified": true or false,
   "case_title": "the person's name or case title, or empty string if you cannot identify one",
-  "aliases": ["known aliases, nicknames, or alternate spellings — empty list if none"],
+  "aliases": ["known aliases, nicknames, or alternate spellings — at most 3, empty list if none"],
   "confidence": "High" or "Medium" or "Low" or "Very Low",
-  "confidence_reason": "one or two sentences explaining the confidence level",
-  "victims": ["victim names — empty list if unknown"],
-  "suspects": ["suspect names — empty list if unknown"],
-  "related_people": ["other related people — empty list if none"],
-  "timeline": ["short chronological bullet points — empty list if unknown"],
-  "outcome": "legal outcome/verdict if known, else empty string"
+  "confidence_reason": "exactly one short sentence explaining the confidence level",
+  "victims": ["victim names — at most 3, empty list if unknown"],
+  "suspects": ["suspect names — at most 3, empty list if unknown"],
+  "related_people": ["other related people — at most 3, empty list if none"],
+  "timeline": ["short chronological bullet points — at most 5, empty list if unknown"],
+  "outcome": "legal outcome/verdict if known, else empty string — one short sentence"
 }}
 
 Rules:
 - Never invent facts. Only include a detail if you are reasonably confident it is real and consistent with the clues.
 - If you cannot identify a specific real case with reasonable confidence, set "identified" to false, \
 "confidence" to "Very Low", and leave victims/suspects/timeline/outcome empty — do not guess a case just to have an answer.
+- Respect every list-length limit above. Do not exceed it even if more items are known.
 
 Return only the JSON object described above — no other text.
 """
@@ -249,6 +251,62 @@ def _decode_json_ish(text: str):
         return None, True
 
 
+def _repair_truncated_json_object(text: str):
+    """Conservative repair for an identify response that starts with '{' but
+    was cut off before a balanced closing '}' — typically the model's output
+    hit its token limit mid-object. Closes an unterminated string (if any),
+    trims a dangling trailing key/value fragment that has no value, then
+    closes whatever objects/arrays were still open and tries to parse.
+
+    Returns the parsed dict, or None if the repair still doesn't produce
+    valid JSON (the caller then falls back to the clue-based result — this
+    never raises and never invents field values, it only closes punctuation
+    the model didn't get to emit)."""
+    stack = []
+    in_string = False
+    escape = False
+    for ch in text:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in '{[':
+            stack.append(ch)
+        elif ch in '}]' and stack:
+            stack.pop()
+
+    if not stack:
+        # Already balanced (or broken in some other way) — not a truncation case.
+        return None
+
+    repaired = text + '"' if in_string else text
+    for _ in range(4):
+        # Only strip a dangling *key* with no value at all (comma, quoted
+        # key, colon, then nothing) — the colon is required so a complete
+        # trailing string that's a valid array/object value (no colon after
+        # it) is never mistaken for a dangling fragment and dropped.
+        trimmed = re.sub(r',\s*"[^"]*"\s*:\s*$', '', repaired)
+        trimmed = re.sub(r',\s*$', '', trimmed)
+        if trimmed == repaired:
+            break
+        repaired = trimmed
+
+    for opener in reversed(stack):
+        repaired += ']' if opener == '[' else '}'
+
+    try:
+        data = json.loads(repaired)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _extract_tool_call_arguments(data: dict):
     """Pull the first object-like `arguments` payload out of an OpenAI/NVIDIA
     style tool-call response, e.g.
@@ -295,6 +353,15 @@ def _parse_identify_json(raw: str) -> dict:
         if normalized != text:
             data, found_normalized_shape = _decode_json_ish(normalized)
             found_object_shape = found_object_shape or found_normalized_shape
+
+    if data is None and text.startswith('{'):
+        # Text starts an object but no balanced '}' was found anywhere in it —
+        # likely truncated by the model's max_tokens limit. Try a conservative
+        # repair (close the dangling string/array/object) before giving up.
+        repaired = _repair_truncated_json_object(text)
+        if repaired is not None:
+            data = repaired
+            found_object_shape = True
 
     if isinstance(data, dict) and "tool_calls" in data and (
             "identified" not in data or "case_title" not in data):
@@ -429,7 +496,7 @@ def identify_case(raw_clue_text: str) -> dict:
     except _IdentifyParseError as e:
         preview = _sanitize_ai_response_preview(raw)
         print(f"[RESEARCH_HUB] identify_case AI response was not valid JSON ({e}); "
-              f"response preview: {preview!r}")
+              f"raw_len={len(raw)}; response preview: {preview!r}")
         return _fallback_identified_case(clues, timed_out=False)
     except Exception as e:
         timed_out = is_timeout_error(e)
