@@ -225,18 +225,29 @@ def ai_task_ready(task: str) -> bool:
     return ready
 
 
-def _nvidia_call(model: str, prompt: str, timeout: int = 60, num_predict: int = 1000) -> str:
+# Tasks where deterministic, low-randomness output matters more than variety —
+# identification/verification should reliably return the same well-formed
+# answer for the same input rather than creative prose.
+NVIDIA_LOW_TEMPERATURE_TASKS = ("identify", "verify")
+NVIDIA_LOW_TEMPERATURE = 0.1
+
+
+def _nvidia_call(model: str, prompt: str, timeout: int = 60, num_predict: int = 1000,
+                 temperature: float = None) -> str:
     """Low-level NVIDIA NIM call via its OpenAI-compatible chat completions
     endpoint. Raises NvidiaAPIError on any failure; never logs the API key."""
     api_key = get_nvidia_api_key()
     if not api_key:
         raise NvidiaAPIError("No NVIDIA API key configured")
-    payload = json.dumps({
+    payload_dict = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": num_predict,
         "stream": False,
-    }).encode()
+    }
+    if temperature is not None:
+        payload_dict["temperature"] = temperature
+    payload = json.dumps(payload_dict).encode()
     req = urllib.request.Request(
         f"{NVIDIA_API_BASE}/chat/completions",
         data=payload,
@@ -261,11 +272,13 @@ def _nvidia_call(model: str, prompt: str, timeout: int = 60, num_predict: int = 
 
 def nvidia_generate(prompt: str, task: str = "caption", timeout: int = 60,
                     num_predict: int = 1000) -> str:
-    return _nvidia_call(get_nvidia_model(task), prompt, timeout, num_predict)
+    temperature = NVIDIA_LOW_TEMPERATURE if task in NVIDIA_LOW_TEMPERATURE_TASKS else None
+    return _nvidia_call(get_nvidia_model(task), prompt, timeout, num_predict, temperature=temperature)
 
 
 def nvidia_identify(prompt: str, timeout: int = 30) -> str:
-    return _nvidia_call(get_nvidia_model("identify"), prompt, timeout, 400)
+    return _nvidia_call(get_nvidia_model("identify"), prompt, timeout, 400,
+                        temperature=NVIDIA_LOW_TEMPERATURE)
 
 
 def ai_generate(prompt: str, timeout: int = None, task: str = "caption",

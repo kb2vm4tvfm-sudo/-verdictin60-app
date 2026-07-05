@@ -99,8 +99,14 @@ Clues:
 {clues}
 ---
 
-Identify the single most likely real case these clues refer to. Respond with ONLY a JSON object \
-(no other text, no markdown fences) with exactly these keys:
+Identify the single most likely real case these clues refer to.
+
+CRITICAL OUTPUT FORMAT — follow exactly:
+- Respond with ONLY a single valid JSON object. Nothing else.
+- No markdown. No code fences (no ``` of any kind).
+- No explanation, preamble, reasoning, or commentary before or after the JSON.
+- Do not think out loud — output only the final JSON object.
+- The JSON object must contain exactly these keys:
 {{
   "identified": true or false,
   "case_title": "the person's name or case title, or empty string if you cannot identify one",
@@ -118,6 +124,8 @@ Rules:
 - Never invent facts. Only include a detail if you are reasonably confident it is real and consistent with the clues.
 - If you cannot identify a specific real case with reasonable confidence, set "identified" to false, \
 "confidence" to "Very Low", and leave victims/suspects/timeline/outcome empty — do not guess a case just to have an answer.
+
+Return only the JSON object described above — no other text.
 """
 
 
@@ -132,17 +140,65 @@ def _build_identify_prompt(clues: dict) -> str:
     return _IDENTIFY_PROMPT_TEMPLATE.format(clues=clue_block)
 
 
+def _strip_code_fences(text: str) -> str:
+    """Strip a wrapping ```/```json markdown code fence, if present. Some
+    models (notably NVIDIA NIM) wrap JSON in fences despite being told not to."""
+    text = text.strip()
+    match = re.match(r'^```(?:json)?\s*(.*?)\s*```$', text, flags=re.DOTALL | re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    # Tolerate a fence on only one side (model forgot the closing/opening fence).
+    text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\s*```$', '', text)
+    return text.strip()
+
+
+def _extract_first_json_object(text: str):
+    """Scan for the first balanced {...} object, tolerating stray prose or
+    reasoning text before/after it. Brace-depth aware so braces inside JSON
+    string values don't break the scan."""
+    search_from = 0
+    while True:
+        start = text.find('{', search_from)
+        if start == -1:
+            return None
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == '\\':
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[start:i + 1])
+                    except Exception:
+                        break
+        search_from = start + 1
+
+
 def _parse_identify_json(raw: str):
     if not raw or not raw.strip():
         return None
     text = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL | re.IGNORECASE).strip()
-    start, end = text.find('{'), text.rfind('}')
-    if start == -1 or end == -1 or end <= start:
-        return None
+    text = _strip_code_fences(text)
     try:
-        return json.loads(text[start:end + 1])
+        return json.loads(text)
     except Exception:
-        return None
+        pass
+    return _extract_first_json_object(text)
 
 
 def _str_list(data: dict, key: str) -> list:
