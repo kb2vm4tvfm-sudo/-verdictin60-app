@@ -7,9 +7,17 @@
 - check_ollama / check_ollama_model_installed: Ollama availability checks.
 - _ollama_call / ollama_generate / ollama_identify: low-level and
   task-specific Ollama request calls.
+- nvidia_generate / nvidia_identify: optional NVIDIA NIM cloud calls, used only
+  when the user has configured an API key and selected a Cloud provider mode.
+- ai_generate / ai_identify / ai_task_ready: provider-aware wrappers that pick
+  between Ollama and NVIDIA NIM based on the "AI Provider" setting. Ollama
+  stays the default; NVIDIA is only used if explicitly enabled and configured.
 """
 import json
+import os
 import re
+import urllib.error
+import urllib.request
 
 from verdictin60_core.settings import load_settings
 
@@ -141,3 +149,153 @@ def ollama_identify(prompt: str, timeout: int = None) -> str:
     except Exception:
         fast_model = get_ai_model("caption")
     return _ollama_call(fast_model, prompt, timeout or get_ai_timeout("identify"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NVIDIA NIM — optional free cloud fallback (disabled unless configured)
+# ─────────────────────────────────────────────────────────────────────────────
+
+NVIDIA_API_BASE = "https://integrate.api.nvidia.com/v1"
+
+AI_PROVIDER_MODES = ("Local only", "Cloud fallback", "Cloud only")
+
+# Free NVIDIA Build / NIM development-endpoint models for the tasks this app
+# already runs through Ollama. Reranking/embedding/OCR/safety/synthetic-video
+# models from the issue are intentionally left out of this first pass.
+NVIDIA_MODELS = {
+    "identify": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "caption": "nvidia/nemotron-3-ultra-550b-a55b",
+    "verify": "nvidia/nemotron-3-ultra-550b-a55b",
+}
+
+
+class NvidiaAPIError(Exception):
+    """Raised for NVIDIA NIM errors (network, auth, quota/rate-limit, bad response)."""
+
+
+def get_ai_provider_mode() -> str:
+    mode = load_settings().get("ai_provider_mode", "Local only")
+    return mode if mode in AI_PROVIDER_MODES else "Local only"
+
+
+def get_nvidia_api_key() -> str:
+    """Read the NVIDIA API key from settings, falling back to an env var.
+    Never printed or logged anywhere in this module."""
+    key = load_settings().get("nvidia_api_key", "") or os.environ.get("NVIDIA_API_KEY", "")
+    return key.strip()
+
+
+def nvidia_available() -> bool:
+    return bool(get_nvidia_api_key())
+
+
+def get_nvidia_model(task: str) -> str:
+    return NVIDIA_MODELS.get(task, NVIDIA_MODELS["caption"])
+
+
+def ai_task_ready(task: str) -> bool:
+    """True if `task` can run right now given the current AI Provider setting:
+    either the local Ollama model is installed, or a Cloud mode has a NVIDIA
+    key configured."""
+    mode = get_ai_provider_mode()
+    if mode == "Cloud only":
+        return nvidia_available()
+    ready = check_ollama_model_installed(get_ai_model(task))
+    if mode == "Cloud fallback" and nvidia_available():
+        return True
+    return ready
+
+
+def _nvidia_call(model: str, prompt: str, timeout: int = 60, num_predict: int = 1000) -> str:
+    """Low-level NVIDIA NIM call via its OpenAI-compatible chat completions
+    endpoint. Raises NvidiaAPIError on any failure; never logs the API key."""
+    api_key = get_nvidia_api_key()
+    if not api_key:
+        raise NvidiaAPIError("No NVIDIA API key configured")
+    payload = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": num_predict,
+        "stream": False,
+    }).encode()
+    req = urllib.request.Request(
+        f"{NVIDIA_API_BASE}/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+    )
+    try:
+        r = urllib.request.urlopen(req, timeout=timeout)
+        data = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        # 401/403 = bad/missing access, 402 = payment required, 429 = rate/quota.
+        raise NvidiaAPIError(f"NVIDIA NIM HTTP {e.code}") from e
+    except Exception as e:
+        raise NvidiaAPIError(f"NVIDIA NIM request failed: {e}") from e
+    try:
+        return data["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError) as e:
+        raise NvidiaAPIError("NVIDIA NIM response missing expected content") from e
+
+
+def nvidia_generate(prompt: str, task: str = "caption", timeout: int = 60,
+                    num_predict: int = 1000) -> str:
+    return _nvidia_call(get_nvidia_model(task), prompt, timeout, num_predict)
+
+
+def nvidia_identify(prompt: str, timeout: int = 30) -> str:
+    return _nvidia_call(get_nvidia_model("identify"), prompt, timeout, 400)
+
+
+def ai_generate(prompt: str, timeout: int = None, task: str = "caption",
+                num_predict: int = 1000) -> str:
+    """Provider-aware caption/verify generation.
+
+    - "Local only" (default): identical to calling ollama_generate directly.
+    - "Cloud fallback": try Ollama first; only on Ollama failure/timeout, try
+      NVIDIA NIM if a key is configured. If NVIDIA also fails, re-raise the
+      original Ollama exception so existing callers' except-blocks (timeout
+      detection, fallback captions, etc.) keep working unchanged.
+    - "Cloud only": use NVIDIA NIM; if it errors (including quota/rate-limit/
+      payment/access), fall back to Ollama rather than crash.
+    """
+    mode = get_ai_provider_mode()
+    if mode == "Cloud only" and nvidia_available():
+        try:
+            return nvidia_generate(prompt, task=task, timeout=timeout or 60, num_predict=num_predict)
+        except Exception as e:
+            print(f"[AI] NVIDIA NIM call failed in Cloud-only mode ({e}); falling back to Ollama")
+            return ollama_generate(prompt, timeout=timeout, task=task, num_predict=num_predict)
+    try:
+        return ollama_generate(prompt, timeout=timeout, task=task, num_predict=num_predict)
+    except Exception as e:
+        if mode == "Cloud fallback" and nvidia_available():
+            print(f"[AI] Ollama failed for task={task} ({e}); trying NVIDIA NIM fallback")
+            try:
+                return nvidia_generate(prompt, task=task, timeout=timeout or 60, num_predict=num_predict)
+            except Exception as nvidia_exc:
+                print(f"[AI] NVIDIA NIM fallback also failed: {nvidia_exc}")
+        raise
+
+
+def ai_identify(prompt: str, timeout: int = None) -> str:
+    """Provider-aware case-identification call — same fallback rules as ai_generate."""
+    mode = get_ai_provider_mode()
+    if mode == "Cloud only" and nvidia_available():
+        try:
+            return nvidia_identify(prompt, timeout=timeout or 30)
+        except Exception as e:
+            print(f"[AI] NVIDIA NIM identify failed in Cloud-only mode ({e}); falling back to Ollama")
+            return ollama_identify(prompt, timeout=timeout)
+    try:
+        return ollama_identify(prompt, timeout=timeout)
+    except Exception as e:
+        if mode == "Cloud fallback" and nvidia_available():
+            print(f"[AI] Ollama identify failed ({e}); trying NVIDIA NIM fallback")
+            try:
+                return nvidia_identify(prompt, timeout=timeout or 30)
+            except Exception as nvidia_exc:
+                print(f"[AI] NVIDIA NIM identify fallback also failed: {nvidia_exc}")
+        raise

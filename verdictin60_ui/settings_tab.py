@@ -19,6 +19,13 @@ SETTINGS_TABS = [
     ("advanced", "Advanced"),
 ]
 
+AI_PROVIDER_MODE_LABELS = {
+    "Local only": "Local only — Ollama",
+    "Cloud fallback": "Cloud fallback — Ollama first, NVIDIA NIM if Ollama fails",
+    "Cloud only": "Cloud only — NVIDIA NIM",
+}
+AI_PROVIDER_LABEL_TO_MODE = {v: k for k, v in AI_PROVIDER_MODE_LABELS.items()}
+
 
 class SettingsDialog(tk.Toplevel):
     def __init__(self, parent):
@@ -180,6 +187,38 @@ class SettingsDialog(tk.Toplevel):
             font=("Helvetica", 11), style="VerdictIn60.TCombobox",
         )
         ai_dropdown.pack(fill="x", ipady=4)
+
+        self._section_label(panel, "AI PROVIDER  —  OPTIONAL NVIDIA NIM CLOUD FALLBACK")
+        provider_card = make_card(panel)
+        provider_card.pack(fill="x", pady=(SPACE_MD, 0))
+        provider_body = card_body(provider_card)
+        provider_row = make_setting_row(
+            provider_body, "AI Provider",
+            "Ollama runs locally and stays free by default. NVIDIA NIM is an optional "
+            "free cloud fallback — nothing is sent to NVIDIA unless you pick a Cloud "
+            "option here and add an API key below.",
+        )
+        provider_row.pack(fill="x")
+        s = load_settings()
+        current_mode = s.get("ai_provider_mode", "Local only")
+        if current_mode not in AI_PROVIDER_MODE_LABELS:
+            current_mode = "Local only"
+        self._ai_provider_var = tk.StringVar(value=AI_PROVIDER_MODE_LABELS[current_mode])
+        provider_dropdown = ttk.Combobox(
+            provider_row, textvariable=self._ai_provider_var,
+            values=list(AI_PROVIDER_MODE_LABELS.values()), state="readonly",
+            font=("Helvetica", 11), style="VerdictIn60.TCombobox",
+        )
+        provider_dropdown.pack(fill="x", ipady=4)
+
+        tk.Frame(provider_body, bg=BORDER, height=1).pack(fill="x", pady=(SPACE_MD, SPACE_MD))
+        key_row = make_setting_row(
+            provider_body, "NVIDIA API Key",
+            "From build.nvidia.com. Stored locally, masked on screen, and never logged. "
+            "Leave blank to keep using Ollama only.",
+        )
+        key_row.pack(fill="x")
+        self._make_entry(key_row, "nvidia_api_key", s.get("nvidia_api_key", ""), True)
         return panel
 
     def _build_models(self, parent, active_speed_mode):
@@ -293,6 +332,8 @@ class SettingsDialog(tk.Toplevel):
             speed_mode = "Balanced"
         current["ai_speed_mode"] = speed_mode
         current["ai_model"] = AI_SPEED_MODES[speed_mode]["caption"]
+        provider_label = self._ai_provider_var.get().strip()
+        current["ai_provider_mode"] = AI_PROVIDER_LABEL_TO_MODE.get(provider_label, "Local only")
         current["preferred_browser"] = self._browser_var.get().strip()
         save_settings(current)
         self.destroy()

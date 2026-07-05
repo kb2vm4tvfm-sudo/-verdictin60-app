@@ -30,7 +30,7 @@ from verdictin60_core.export import ExportError, run_export_pipeline
 from verdictin60_core.ai import (
     get_ai_speed_mode, get_ai_model,
     is_timeout_error, check_ollama, check_ollama_model_installed,
-    ollama_generate, ollama_identify,
+    ai_generate, ai_identify, ai_task_ready,
 )
 from verdictin60_core.research import (
     fetch_wikipedia_summary, gather_verification_sources,
@@ -1757,7 +1757,7 @@ class App(tk.Tk):
                         confidence = 0.0
                         timed_out = False
                         try:
-                            raw_response = ollama_identify(identify_prompt).strip()
+                            raw_response = ai_identify(identify_prompt).strip()
                             print(f"[{_ts()} URL_IMPORT] Identify raw: {raw_response[:200]!r}")
                             first_line = next(
                                 (l.strip() for l in raw_response.splitlines() if l.strip()), ""
@@ -1980,7 +1980,7 @@ class App(tk.Tk):
                 # ── Step 3b: Ollama — generate grounded caption ───────────────
                 if not raw_caption:
                     caption_model = get_ai_model("caption")
-                    if not check_ollama_model_installed(caption_model):
+                    if not ai_task_ready("caption"):
                         log_lines.append(f"[{_ts()}] Caption model missing: {caption_model}")
                         generated_caption = fallback_verdict_caption(
                             title, full_text, source_section,
@@ -2054,7 +2054,7 @@ class App(tk.Tk):
                         generated_caption = ""
                         _ollama_raw_response = ""
                         try:
-                            _ollama_raw_response = ollama_generate(caption_prompt, task="caption")
+                            _ollama_raw_response = ai_generate(caption_prompt, task="caption")
                             generated_caption = _ollama_raw_response.strip()
                             t_gen_ms = int((time.time() - t_gen_start) * 1000)
                             log_lines.append(
@@ -2182,7 +2182,7 @@ class App(tk.Tk):
                 )
                 if (
                     raw_caption and has_verifiable_sources
-                    and check_ollama_model_installed(get_ai_model("verify"))
+                    and ai_task_ready("verify")
                 ):
                     _st("⏳  Verifying caption facts with AI...")
                     t_verify_start = time.time()
@@ -2210,7 +2210,7 @@ class App(tk.Tk):
                         '"warnings": ["list any unsupported claims"]}'
                     )
                     try:
-                        verify_raw = ollama_generate(
+                        verify_raw = ai_generate(
                             verify_prompt, task="verify", timeout=45, num_predict=220
                         ).strip()
                         print(f"[{_ts()} URL_IMPORT] Verify raw: {verify_raw[:400]!r}")

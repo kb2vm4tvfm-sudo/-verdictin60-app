@@ -19,6 +19,7 @@ def load_settings() -> dict:
         "buffer_key": "", "buffer_channel_id": "", "post_time": "18:00",
         "ai_speed_mode": "Balanced",
         "ai_model": "qwen3:14b", "preferred_browser": "chrome",
+        "ai_provider_mode": "Local only", "nvidia_api_key": "",
     }
 
 
