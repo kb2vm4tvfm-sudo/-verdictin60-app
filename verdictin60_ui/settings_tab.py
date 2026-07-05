@@ -56,8 +56,30 @@ class SettingsDialog(tk.Toplevel):
         tabs_wrap = tk.Frame(self, bg=BG)
         tabs_wrap.pack(fill="x", padx=30, pady=(16, 0))
 
-        panels_host = tk.Frame(self, bg=BG)
-        panels_host.pack(fill="both", expand=True, padx=30, pady=(14, 0))
+        # Panel content sits in a scrollable canvas so it stays reachable when a
+        # panel (e.g. AI, with its NVIDIA + safety-guard cards) is taller than
+        # the dialog on smaller windows. Header, tabs, and the save button below
+        # all live outside this canvas, so they're always visible without scrolling.
+        scroll_outer = tk.Frame(self, bg=BG)
+        scroll_outer.pack(fill="both", expand=True, padx=30, pady=(14, 0))
+
+        canvas = tk.Canvas(scroll_outer, bg=BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(scroll_outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        panels_host = tk.Frame(canvas, bg=BG)
+        panels_win = canvas.create_window((0, 0), window=panels_host, anchor="nw")
+
+        def _on_canvas_resize(e):
+            canvas.itemconfig(panels_win, width=e.width)
+
+        def _on_panels_configure(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        canvas.bind("<Configure>", _on_canvas_resize)
+        panels_host.bind("<Configure>", _on_panels_configure)
 
         active_speed_mode = self._resolve_speed_mode(s)
 
@@ -71,10 +93,19 @@ class SettingsDialog(tk.Toplevel):
             "advanced":     self._build_advanced(panels_host, s),
         }
 
+        # Bind mouse-wheel / trackpad scrolling directly onto the canvas and
+        # every descendant widget (cards, labels, entries, dropdowns) so the
+        # page scrolls no matter what the cursor happens to be over — Tk fires
+        # <Enter>/<Leave> on the canvas itself whenever the pointer crosses onto
+        # a child widget, so binding only the canvas would drop scrolling almost
+        # everywhere content actually is.
+        self._bind_scroll_recursive(canvas, canvas)
+
         def _show_panel(key):
             for p in self._panels.values():
                 p.pack_forget()
             self._panels[key].pack(fill="both", expand=True)
+            canvas.yview_moveto(0)
 
         bar, _select = make_segmented_tabs(tabs_wrap, SETTINGS_TABS, _show_panel, initial="general")
         bar.pack(anchor="w")
@@ -115,6 +146,26 @@ class SettingsDialog(tk.Toplevel):
             selectforeground=[("readonly", WHITE)],
         )
         return style
+
+    # ── Scrolling ─────────────────────────────────────────────────────────────
+
+    def _bind_scroll_recursive(self, widget, canvas):
+        """Bind wheel/trackpad scrolling to `widget` and every descendant so
+        the settings panel scrolls no matter which child the cursor is over."""
+        widget.bind("<MouseWheel>", lambda e: self._on_mousewheel(canvas, e))
+        widget.bind("<Button-4>", lambda e: canvas.yview_scroll(-1, "units"))
+        widget.bind("<Button-5>", lambda e: canvas.yview_scroll(1, "units"))
+        for child in widget.winfo_children():
+            self._bind_scroll_recursive(child, canvas)
+
+    def _on_mousewheel(self, canvas, event):
+        delta = getattr(event, "delta", 0)
+        if delta:
+            # Windows/most X11 builds report multiples of 120; macOS trackpads
+            # report small per-tick deltas, so fall back to a single-unit step.
+            step = int(-1 * (delta / 120)) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
+            canvas.yview_scroll(step, "units")
+        return "break"
 
     def _resolve_speed_mode(self, s):
         current_speed = s.get("ai_speed_mode", "")
