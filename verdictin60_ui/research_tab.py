@@ -12,15 +12,17 @@ from tkinter import filedialog
 import tkinter as tk
 from tkinter import ttk
 
-from verdictin60_core import research_hub
+from verdictin60_core import research_hub, publishing
+from verdictin60_core.settings import load_settings, save_settings
 from verdictin60_ui.theme import (
     BG, CARD, CARD_ALT, BORDER, TEXT, TEXT_MUTED, TEXT_SECONDARY,
-    ACCENT, ACCENT_HOT, INPUT_BG, DISABLED,
+    ACCENT, ACCENT_HOT, INPUT_BG, DISABLED, ERROR,
     FONT_FAMILY, FONT_MONO, SPACE_XS, SPACE_SM, SPACE_MD, SPACE_LG,
 )
 from verdictin60_ui.components import (
     make_card, card_body, make_badge, make_confidence_badge,
     make_loading_state, stop_loading_state, make_error_banner, make_empty_state,
+    make_source_list,
 )
 from verdictin60_ui.widgets import _make_lbtn, _lbtn_disable, _lbtn_enable
 
@@ -261,6 +263,7 @@ class ResearchHubTab:
         action_defs = [
             ("Save to Case Library", self._action_save_to_library),
             ("Generate Caption", self._action_generate_caption),
+            ("Create Post", self._action_create_post),
             ("Copy All Sources", self._action_copy_all_sources),
             ("Copy Archive Links", self._action_copy_archive_links),
             ("Open All Sources", self._action_open_all_sources),
@@ -370,6 +373,182 @@ class ResearchHubTab:
             win, "COPY CAPTION", lambda: self._copy_to_clipboard(text_widget.get("1.0", "end").strip()),
             bg=ACCENT, fg=TEXT, hover_bg=ACCENT_HOT, font=(FONT_FAMILY, 11, "bold"), pady=10,
         ).pack(fill="x", padx=16, pady=(0, 16))
+
+    # ── Regular (non-reel) social post — issue #65 ────────────────────────────
+
+    def _action_create_post(self):
+        if not self._result or not self._result["case"].get("case_title"):
+            return
+        self._set_status("⏳  Drafting regular post…")
+
+        def _run():
+            try:
+                draft = research_hub.generate_post_draft(self._result)
+            except Exception as e:
+                self.parent.after(0, lambda: self._set_status(f"Post draft generation failed: {e}", error=True))
+                return
+            self.parent.after(0, lambda: self._show_post_draft_dialog(draft))
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _show_post_draft_dialog(self, draft: dict):
+        if draft.get("is_ai_generated"):
+            self._set_status("Post draft generated.")
+        else:
+            self._set_status("Post draft ready — AI was unavailable, so a template was used. Edit before sending.")
+
+        win = tk.Toplevel(self.parent)
+        win.title("Regular Post Draft — Research Hub")
+        win.configure(bg=BG)
+        win.geometry("680x760")
+
+        tk.Label(win, text="REGULAR POST  ·  NOT A REEL", bg=BG, fg=ACCENT,
+                 font=(FONT_FAMILY, 11, "bold")).pack(anchor="w", padx=16, pady=(16, SPACE_XS))
+
+        badge_row = tk.Frame(win, bg=BG)
+        badge_row.pack(fill="x", padx=16)
+        make_confidence_badge(badge_row, draft.get("confidence", "Very Low"),
+                              draft.get("confidence_reason"), bg=BG).pack(side="left")
+        if not draft.get("is_ai_generated"):
+            make_badge(badge_row, "TEMPLATE — AI UNAVAILABLE", status="warning").pack(
+                side="left", padx=(SPACE_SM, 0))
+
+        outer = tk.Frame(win, bg=BG)
+        outer.pack(fill="both", expand=True, padx=16, pady=(SPACE_SM, 0))
+        canvas = tk.Canvas(outer, bg=BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        body = tk.Frame(canvas, bg=BG)
+        body_win = canvas.create_window((0, 0), window=body, anchor="nw")
+
+        def _on_resize(e):
+            canvas.itemconfig(body_win, width=e.width)
+
+        def _on_body_configure(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        canvas.bind("<Configure>", _on_resize)
+        body.bind("<Configure>", _on_body_configure)
+
+        def _section_label(text):
+            tk.Label(body, text=text, bg=BG, fg=TEXT_MUTED,
+                     font=(FONT_FAMILY, 9, "bold")).pack(anchor="w", pady=(SPACE_MD, SPACE_XS))
+
+        _section_label("POST TITLE / HOOK")
+        hook_var = tk.StringVar(value=draft.get("hook", ""))
+        tk.Entry(
+            body, textvariable=hook_var, font=(FONT_FAMILY, 12), fg=TEXT, bg=INPUT_BG,
+            insertbackground=TEXT, relief="flat", highlightthickness=1,
+            highlightbackground=BORDER, highlightcolor=ACCENT,
+        ).pack(fill="x", ipady=8)
+
+        _section_label("POST BODY  (short / carousel-style text)")
+        body_text_frame = tk.Frame(body, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER)
+        body_text_frame.pack(fill="x")
+        body_text = tk.Text(body_text_frame, bg=INPUT_BG, fg=TEXT, insertbackground=TEXT,
+                            font=(FONT_FAMILY, 11), bd=0, relief="flat", wrap="word", height=8)
+        body_text.pack(fill="x", padx=8, pady=8)
+        body_text.insert("1.0", draft.get("body", ""))
+
+        _section_label("INSTAGRAM-READY CAPTION")
+        caption_frame = tk.Frame(body, bg=INPUT_BG, highlightthickness=1, highlightbackground=BORDER)
+        caption_frame.pack(fill="x")
+        caption_text = tk.Text(caption_frame, bg=INPUT_BG, fg=TEXT, insertbackground=TEXT,
+                               font=(FONT_FAMILY, 11), bd=0, relief="flat", wrap="word", height=12)
+        caption_text.pack(fill="x", padx=8, pady=8)
+        caption_text.insert("1.0", draft.get("caption", ""))
+
+        hashtags = draft.get("hashtags") or []
+        if hashtags:
+            _section_label(f"HASHTAGS ({len(hashtags)})")
+            tk.Label(body, text=" ".join(hashtags), bg=BG, fg=TEXT_SECONDARY,
+                     font=(FONT_FAMILY, 9), wraplength=600, justify="left").pack(anchor="w")
+
+        accessible = self._accessible_sources()
+        blocked = self._blocked_sources()
+        _section_label(f"SOURCES  ({len(accessible) + len(blocked)})")
+        make_source_list(body, accessible + blocked, max_items=8, bg=CARD_ALT).pack(fill="x")
+
+        status_lbl = tk.Label(win, text="", bg=BG, fg=TEXT_SECONDARY,
+                              font=(FONT_FAMILY, 9), wraplength=640, justify="left")
+        status_lbl.pack(anchor="w", padx=16, pady=(SPACE_SM, 0))
+
+        actions = tk.Frame(win, bg=BG)
+        actions.pack(fill="x", padx=16, pady=(SPACE_SM, 16))
+
+        def _publish(now: bool):
+            caption_final = caption_text.get("1.0", "end").strip()
+            if not caption_final:
+                status_lbl.config(text="Caption cannot be empty.", fg=ERROR)
+                return
+            _lbtn_disable(btn_publish, DISABLED, TEXT_MUTED)
+            _lbtn_disable(btn_schedule, DISABLED, TEXT_MUTED)
+            status_lbl.config(text="⏳  Sending to Buffer…", fg=TEXT_SECONDARY)
+            self._send_regular_post_to_buffer(caption_final, now, status_lbl, btn_publish, btn_schedule)
+
+        btn_publish = _make_lbtn(
+            actions, "PUBLISH NOW", lambda: _publish(True),
+            bg=ACCENT, fg=TEXT, hover_bg=ACCENT_HOT, font=(FONT_FAMILY, 11, "bold"), pady=12,
+        )
+        btn_schedule = _make_lbtn(
+            actions, "SCHEDULE", lambda: _publish(False),
+            bg=INPUT_BG, fg=TEXT, hover_bg=BORDER, font=(FONT_FAMILY, 11, "bold"), pady=12,
+        )
+        btn_publish.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        btn_schedule.pack(side="left", fill="x", expand=True, padx=(6, 0))
+
+    def _send_regular_post_to_buffer(self, caption, publish_now, status_lbl, btn_publish, btn_schedule):
+        def _run():
+            s = load_settings()
+            bkey = (s.get("buffer_key") or "").strip()
+            bcid = (s.get("buffer_channel_id") or "").strip()
+            post_time = s.get("post_time", "18:00")
+            if not bkey or not bcid:
+                self.parent.after(0, lambda: self._post_send_failed(
+                    status_lbl, btn_publish, btn_schedule,
+                    "Buffer isn't configured — add your Buffer API key and channel ID in Settings."))
+                return
+            try:
+                if publish_now:
+                    due_dt = publishing.immediate_post_datetime()
+                else:
+                    due_dt = publishing.next_available_date_safe(bkey, bcid, post_time, limit_s=10.0)
+                raw_text, result = publishing.schedule_regular_post_to_buffer(
+                    caption, bcid, bkey, post_time, due_at_dt=due_dt,
+                )
+            except Exception as e:
+                self.parent.after(0, lambda: self._post_send_failed(
+                    status_lbl, btn_publish, btn_schedule, f"Buffer request failed: {e}"))
+                return
+
+            data = result.get("data", {}).get("createPost", {})
+            if "post" in data:
+                due = data["post"].get("dueAt", "")
+                s2 = load_settings()
+                s2["last_scheduled_date"] = due
+                save_settings(s2)
+                label = "Published now." if publish_now else f"Scheduled for {due}."
+                self.parent.after(0, lambda: self._post_send_succeeded(
+                    status_lbl, btn_publish, btn_schedule, label))
+            elif "message" in data:
+                self.parent.after(0, lambda: self._post_send_failed(
+                    status_lbl, btn_publish, btn_schedule, f"Buffer error: {data['message']}"))
+            else:
+                self.parent.after(0, lambda: self._post_send_failed(
+                    status_lbl, btn_publish, btn_schedule, "Buffer returned an unexpected response."))
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _post_send_failed(self, status_lbl, btn_publish, btn_schedule, message):
+        status_lbl.config(text=message, fg=ERROR)
+        _lbtn_enable(btn_publish, ACCENT, TEXT, hover_bg=ACCENT_HOT)
+        _lbtn_enable(btn_schedule, INPUT_BG, TEXT, hover_bg=BORDER)
+
+    def _post_send_succeeded(self, status_lbl, btn_publish, btn_schedule, message):
+        status_lbl.config(text=f"✅  {message}", fg=TEXT)
+        _lbtn_enable(btn_publish, ACCENT, TEXT, hover_bg=ACCENT_HOT)
+        _lbtn_enable(btn_schedule, INPUT_BG, TEXT, hover_bg=BORDER)
+        self._set_status(f"Regular post: {message}")
 
     def _action_copy_all_sources(self):
         sources = self._accessible_sources() + self._blocked_sources()

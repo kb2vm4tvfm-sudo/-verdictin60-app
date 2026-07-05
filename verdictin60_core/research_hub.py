@@ -15,6 +15,10 @@ and archive recovery for the "Research Hub" tab (issue #52).
   archive recovery, targeting a ~60-90s total investigation.
 - generate_caption / export_markdown: turn an investigation result into a
   caption (grounded only in verified sources) or a Markdown research report.
+- generate_post_draft: turn an investigation result into a regular (non-reel)
+  social post draft — hook/title, short body, caption (via generate_caption),
+  hashtags, source summary, and verification confidence — for the Research
+  Hub "Create Post" workflow (issue #65). Never requires a video file.
 """
 import json
 import re
@@ -633,11 +637,10 @@ def investigate(raw_clue_text: str, deadline_seconds: int = DEFAULT_DEADLINE_SEC
 # Caption generation
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _fallback_caption(case: dict, sources: list) -> str:
-    title = case.get("case_title") or "This case"
-    research = source_section_for_caption(sources)
-    body = "\n\n".join([
-        f"VerdictIn60: {title}",
+def _fallback_body_core(title: str) -> str:
+    """The cautious, fact-free paragraph shared by every template fallback
+    (caption and regular-post body) when the local AI is unavailable."""
+    return "\n\n".join([
         f"{title} is the subject of this investigation.",
         (
             "With limited accessible source material, the most responsible way to "
@@ -646,6 +649,12 @@ def _fallback_caption(case: dict, sources: list) -> str:
         ),
         "What detail do you think should be verified first before people share this story?",
     ])
+
+
+def _fallback_caption(case: dict, sources: list) -> str:
+    title = case.get("case_title") or "This case"
+    research = source_section_for_caption(sources)
+    body = f"VerdictIn60: {title}\n\n{_fallback_body_core(title)}"
     return f"{body}\n\n{research}\n\nFollow @VerdictIn60 for daily true crime.\n\n{DEFAULT_HASHTAGS}"
 
 
@@ -693,6 +702,187 @@ def generate_caption(result: dict) -> str:
     except Exception as e:
         print(f"[RESEARCH_HUB] caption generation failed: {e}")
     return _fallback_caption(case, sources)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Regular (non-reel) social post draft — issue #65
+# ─────────────────────────────────────────────────────────────────────────────
+
+_POST_DRAFT_PROMPT_TEMPLATE = """You are drafting a VerdictIn60 Instagram REGULAR POST — a static/carousel \
+post, NOT a reel or video — from Research Hub findings.
+
+Primary subject: {title}
+Verification confidence: {confidence_label} — {confidence_reason}
+
+Use only the verified fact sheet and accessible sources below. Do not invent names, dates, motives, \
+quotes, locations, charges, sentences, or emotional details. If a detail is not supported, omit it or \
+phrase cautiously.
+
+Verified fact sheet:
+{fact_sheet}
+
+Accessible sources:
+{source_prompt_text}
+
+Blocked but discovered sources:
+{blocked_prompt_text}
+
+CRITICAL OUTPUT FORMAT — follow exactly:
+- Respond with ONLY a single valid JSON object. Nothing else.
+- No markdown. No code fences (no ``` of any kind).
+- No explanation, preamble, reasoning, or commentary before or after the JSON.
+- The JSON object must contain exactly these keys:
+{{
+  "hook": "a short, scroll-stopping post title/hook — one sentence, no hashtags, no emoji spam",
+  "body": "a short carousel-style post body — 3 to 6 short paragraphs or slide-style lines, no hashtags"
+}}
+
+Rules:
+- Respectful, factual tone; no unsupported dramatic claims.
+- This is a static post, not a video script — never reference "watch", "swipe up video", or reel-specific language.
+
+Return only the JSON object described above — no other text.
+"""
+
+
+class _PostDraftParseError(Exception):
+    """Raised when the post-draft AI response can't be parsed. Same safe-message
+    contract as _IdentifyParseError — never includes the raw response text."""
+
+
+def _parse_post_draft_json(raw: str) -> dict:
+    """Parse the post-draft AI response into a dict, reusing the same tolerant
+    JSON extraction as _parse_identify_json (code fences, stray reasoning
+    text, single-quoted JSON, tool-call wrappers, truncation repair) but
+    requiring "hook"/"body" keys instead of the identify schema.
+
+    Raises _PostDraftParseError with one of: "no JSON object found", "JSON
+    decode error", "missing required fields", "unexpected schema". Never
+    includes the raw response text in the exception."""
+    if not raw or not raw.strip():
+        raise _PostDraftParseError("no JSON object found")
+
+    text = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL | re.IGNORECASE).strip()
+    text = _strip_code_fences(text)
+    text = _strip_reasoning_labels(text)
+    if not text:
+        raise _PostDraftParseError("no JSON object found")
+
+    data, found_object_shape = _decode_json_ish(text)
+    if data is None:
+        normalized = _normalize_quotes_if_safe(text)
+        if normalized != text:
+            data, found_normalized_shape = _decode_json_ish(normalized)
+            found_object_shape = found_object_shape or found_normalized_shape
+
+    if data is None and text.startswith('{'):
+        repaired = _repair_truncated_json_object(text)
+        if repaired is not None:
+            data = repaired
+            found_object_shape = True
+
+    if isinstance(data, dict) and "tool_calls" in data and (
+            "hook" not in data or "body" not in data):
+        tool_data = _extract_tool_call_arguments(data)
+        if tool_data is not None:
+            data = tool_data
+
+    if data is None:
+        raise _PostDraftParseError("JSON decode error" if found_object_shape else "no JSON object found")
+
+    if isinstance(data, list):
+        data = next((item for item in data if isinstance(item, dict)), None)
+
+    if not isinstance(data, dict):
+        raise _PostDraftParseError("unexpected schema")
+
+    if "hook" not in data or "body" not in data:
+        raise _PostDraftParseError("missing required fields")
+
+    return data
+
+
+def _post_draft_needs_fallback(hook: str, body: str) -> str:
+    if not hook or not body:
+        return "empty hook or body"
+    if len(body) < 80:
+        return "body too short"
+    return ""
+
+
+def _fallback_post_hook_body(case: dict) -> tuple:
+    """Simple template hook/body a user can edit manually, used when the
+    local AI is unavailable or its output doesn't pass validation. Never
+    invents facts beyond the case title."""
+    title = case.get("case_title") or "This case"
+    hook = f"{title}: what the record actually shows"
+    return hook, _fallback_body_core(title)
+
+
+def generate_post_draft(result: dict) -> dict:
+    """Generate a regular (non-reel) social post draft from a Research Hub
+    investigation result: hook/title, short body, Instagram-ready caption,
+    hashtags, source summary, and verification confidence.
+
+    Reuses generate_caption (and its existing AI-provider/fallback/
+    verification-grounding logic) for the caption and hashtags, and only asks
+    the AI for the additional hook/body a regular post needs. Falls back to a
+    cautious template for hook/body when the AI is unavailable or returns
+    something unusable. Never requires a video file.
+    """
+    case = result.get("case", {})
+    sources = result.get("sources", [])
+    title = case.get("case_title") or "Unidentified Case"
+    confidence_label = result.get("source_confidence", "Very low")
+    confidence_reason = result.get("source_confidence_reason", "")
+    fact_sheet = build_verified_fact_sheet(title, sources)
+    source_prompt_text = format_sources_for_prompt(sources)
+    blocked_prompt_text = format_blocked_sources_for_prompt(sources)
+
+    prompt = _POST_DRAFT_PROMPT_TEMPLATE.format(
+        title=title,
+        confidence_label=confidence_label,
+        confidence_reason=confidence_reason,
+        fact_sheet=fact_sheet,
+        source_prompt_text=source_prompt_text[:6500],
+        blocked_prompt_text=blocked_prompt_text[:1800],
+    )
+
+    hook, body, ai_used = "", "", False
+    try:
+        raw = ai_generate(prompt, task="research")
+        data = _parse_post_draft_json(raw)
+        candidate_hook = str(data.get("hook", "")).strip()
+        candidate_body = re.sub(r'<think>.*?</think>', '', str(data.get("body", "")),
+                                flags=re.DOTALL | re.IGNORECASE).strip()
+        reason = _post_draft_needs_fallback(candidate_hook, candidate_body)
+        if not reason:
+            hook, body, ai_used = candidate_hook, candidate_body, True
+        else:
+            print(f"[RESEARCH_HUB] generated post draft needs fallback: {reason}")
+    except _PostDraftParseError as e:
+        print(f"[RESEARCH_HUB] post draft AI response was not valid JSON ({e})")
+    except Exception as e:
+        print(f"[RESEARCH_HUB] post draft generation failed: {e}")
+
+    if not ai_used:
+        hook, body = _fallback_post_hook_body(case)
+
+    caption = generate_caption(result)
+    hashtags = re.findall(r'(?<!\w)#\w+', caption)
+
+    return {
+        "post_type": "regular",
+        "case_title": title,
+        "hook": hook,
+        "body": body,
+        "caption": caption,
+        "hashtags": hashtags,
+        "source_summary": source_section_for_caption(sources),
+        "confidence": confidence_label,
+        "confidence_reason": confidence_reason,
+        "is_ai_generated": ai_used,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

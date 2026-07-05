@@ -10,6 +10,9 @@ app.py (Phase 6 refactor, no behavior change).
 - upload_video: upload a finished video to Internet Archive.
 - schedule_to_buffer: create a scheduled Buffer post pointing at an
   Internet Archive video URL.
+- schedule_regular_post_to_buffer / immediate_post_datetime: create a Buffer
+  post for a regular (non-reel) update — text/caption only, no video file
+  required — for the Research Hub "Create Post" workflow (issue #65).
 - buffer_video_not_ready / public_url_http_code / wait_for_public_video_url:
   publishing status checks used while Archive.org finishes processing an
   upload before Buffer can read it.
@@ -475,6 +478,59 @@ mutation CreatePost($text: String!, $channelId: ChannelId!, $dueAt: DateTime) {
 }
 """ % video_url
 
+    variables = {
+        "text": caption,
+        "channelId": channel_id,
+        "dueAt": due_str,
+    }
+
+    r = requests.post(
+        "https://api.buffer.com/graphql",
+        json={"query": mutation, "variables": variables},
+        headers={
+            "Authorization": f"Bearer {buffer_key}",
+            "Content-Type": "application/json",
+        },
+        timeout=30,
+    )
+    return r.text, r.json()
+
+
+def immediate_post_datetime() -> datetime.datetime:
+    """A "publish as soon as possible" datetime for a Buffer post, expressed
+    in the same customScheduled/dueAt shape schedule_regular_post_to_buffer
+    already uses for scheduled posts — a few seconds in the future so Buffer
+    accepts it as a valid due date."""
+    return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=30)
+
+
+def schedule_regular_post_to_buffer(caption: str, channel_id: str, buffer_key: str,
+                                    post_time: str, due_at_dt: datetime.datetime = None) -> tuple:
+    """Create a Buffer post for a regular (non-reel) update — text/caption
+    only. Mirrors schedule_to_buffer's request shape (GraphQL variables, auth
+    header, response shape) so the same caller-side response handling works
+    for both, but omits `assets` and the Instagram `metadata.type: reel`
+    block entirely, since a regular post never requires a video file."""
+    import requests
+    due_at = due_at_dt if due_at_dt is not None else next_post_datetime(post_time)
+    due_str = due_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    mutation = """
+mutation CreatePost($text: String!, $channelId: ChannelId!, $dueAt: DateTime) {
+  createPost(
+    input: {
+      text: $text
+      channelId: $channelId
+      schedulingType: automatic
+      mode: customScheduled
+      dueAt: $dueAt
+    }
+  ) {
+    ... on PostActionSuccess { post { id dueAt } }
+    ... on MutationError { message }
+  }
+}
+"""
     variables = {
         "text": caption,
         "channelId": channel_id,
