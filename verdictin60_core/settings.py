@@ -20,6 +20,10 @@ def load_settings() -> dict:
         "ai_speed_mode": "Balanced",
         "ai_model": "qwen3:14b", "preferred_browser": "chrome",
         "ai_provider_mode": "Local only", "nvidia_api_key": "",
+        "nvidia_model_identify": "", "nvidia_model_caption": "",
+        "nvidia_model_verify": "", "nvidia_model_research": "",
+        "nvidia_model_rerank": "", "nvidia_model_ocr": "",
+        "nvidia_model_safety": "",
     }
 
 

@@ -26,16 +26,19 @@ AI_SPEED_MODES = {
         "identify": "llama3.1:8b",
         "caption": "llama3.1:8b",
         "verify": "llama3.1:8b",
+        "research": "llama3.1:8b",
     },
     "Balanced": {
         "identify": "llama3.1:8b",
         "caption": "qwen3:14b",
         "verify": "qwen3:14b",
+        "research": "qwen3:14b",
     },
     "Best Accuracy": {
         "identify": "llama3.1:8b",
         "caption": "qwen3:32b",
         "verify": "qwen3:32b",
+        "research": "qwen3:32b",
     },
 }
 
@@ -159,14 +162,22 @@ NVIDIA_API_BASE = "https://integrate.api.nvidia.com/v1"
 
 AI_PROVIDER_MODES = ("Local only", "Cloud fallback", "Cloud only")
 
-# Free NVIDIA Build / NIM development-endpoint models for the tasks this app
-# already runs through Ollama. Reranking/embedding/OCR/safety/synthetic-video
-# models from the issue are intentionally left out of this first pass.
-NVIDIA_MODELS = {
-    "identify": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-    "caption": "nvidia/nemotron-3-ultra-550b-a55b",
-    "verify": "nvidia/nemotron-3-ultra-550b-a55b",
-}
+# Per-task NVIDIA NIM model defaults. Each entry is (task, label, default
+# model) — the label and default are used to build the optional "Advanced"
+# per-task model fields in Settings. One NVIDIA API key covers every task;
+# a task falls back to its default model whenever its settings field is left
+# blank.
+NVIDIA_TASK_FIELDS = [
+    ("identify", "Case identification model", "nvidia/nemotron-3-ultra-550b-a55b"),
+    ("caption", "Caption generation model", "nvidia/nemotron-3-ultra-550b-a55b"),
+    ("verify", "Verification model", "nvidia/nemotron-3-ultra-550b-a55b"),
+    ("research", "Research Hub model", "nvidia/nemotron-3-ultra-550b-a55b"),
+    ("rerank", "Source rerank model", "nvidia/llama-nemotron-rerank-1b-v2"),
+    ("ocr", "OCR model", "nvidia/nemotron-ocr-v2"),
+    ("safety", "Safety model", "nvidia/nemotron-3.5-content-safety"),
+]
+NVIDIA_DEFAULT_MODELS = {task: default for task, _label, default in NVIDIA_TASK_FIELDS}
+NVIDIA_MODEL_SETTINGS_KEYS = {task: f"nvidia_model_{task}" for task, _label, _default in NVIDIA_TASK_FIELDS}
 
 
 class NvidiaAPIError(Exception):
@@ -190,7 +201,15 @@ def nvidia_available() -> bool:
 
 
 def get_nvidia_model(task: str) -> str:
-    return NVIDIA_MODELS.get(task, NVIDIA_MODELS["caption"])
+    """Resolve the NVIDIA NIM model for `task`: the user's per-task override
+    from Settings > AI > Advanced if they filled one in, otherwise the app
+    default for that task."""
+    default = NVIDIA_DEFAULT_MODELS.get(task, NVIDIA_DEFAULT_MODELS["caption"])
+    settings_key = NVIDIA_MODEL_SETTINGS_KEYS.get(task)
+    if not settings_key:
+        return default
+    override = (load_settings().get(settings_key) or "").strip()
+    return override or default
 
 
 def ai_task_ready(task: str) -> bool:

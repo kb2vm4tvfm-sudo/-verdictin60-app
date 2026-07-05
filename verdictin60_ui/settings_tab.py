@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from verdictin60_core.settings import load_settings, save_settings
-from verdictin60_core.ai import AI_SPEED_MODES
+from verdictin60_core.ai import AI_SPEED_MODES, NVIDIA_TASK_FIELDS
 from verdictin60_ui.widgets import BG, CRIMSON, CRIMSON_HOT, WHITE, LIGHT_GRAY, _make_lbtn
 from verdictin60_ui.theme import CARD, BORDER, TEXT_MUTED, INPUT_BG, SPACE_MD
 from verdictin60_ui.components import (
@@ -219,6 +219,23 @@ class SettingsDialog(tk.Toplevel):
         )
         key_row.pack(fill="x")
         self._make_entry(key_row, "nvidia_api_key", s.get("nvidia_api_key", ""), True)
+
+        self._section_label(panel, "ADVANCED  —  PER-TASK NVIDIA MODELS (OPTIONAL)")
+        advanced_card = make_card(panel)
+        advanced_card.pack(fill="x", pady=(SPACE_MD, 0))
+        advanced_body = card_body(advanced_card)
+        tk.Label(
+            advanced_body,
+            text="Override the NVIDIA NIM model used for individual tasks. All tasks share the "
+                 "NVIDIA API key above. Leave a field blank to use the app default for that task.",
+            font=("Helvetica", 9), fg=TEXT_MUTED, bg=CARD, anchor="w",
+            wraplength=520, justify="left",
+        ).pack(fill="x", pady=(0, SPACE_MD))
+        advanced_fields = [
+            (f"nvidia_model_{task}", label, f"Default: {default}", s.get(f"nvidia_model_{task}", ""), False)
+            for task, label, default in NVIDIA_TASK_FIELDS
+        ]
+        self._make_field_rows(advanced_body, advanced_fields)
         return panel
 
     def _build_models(self, parent, active_speed_mode):

@@ -442,7 +442,7 @@ def generate_caption(result: dict) -> str:
         "- Return only the caption."
     )
     try:
-        raw = ai_generate(prompt, task="caption")
+        raw = ai_generate(prompt, task="research")
         reason = caption_needs_fallback(raw)
         if not reason:
             return re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL | re.IGNORECASE).strip()
