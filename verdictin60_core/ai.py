@@ -45,7 +45,7 @@ def get_ai_model(task: str) -> str:
 def get_ai_timeout(task: str) -> int:
     model = get_ai_model(task)
     if task == "identify":
-        return 10
+        return 45
     if model == "qwen3:32b":
         return 300
     return 120
