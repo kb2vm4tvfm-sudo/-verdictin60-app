@@ -36,6 +36,24 @@ Do not make changes that break this flow without an explicit migration plan.
 - Prefer small, testable changes around upload, scheduling, caption generation, and source verification.
 - Handle API errors with plain user-facing messages plus enough local detail for debugging.
 
+## Cost / Quota Safety Guard (issue #61)
+
+- Any call to a paid or quota-limited AI/cloud provider (NVIDIA NIM today; a future
+  Claude/Anthropic, Codex/OpenAI, or other connector) must go through
+  `verdictin60_core/provider_guard.py` before the network request:
+  - Check `provider_guard.is_provider_disabled("<provider>")` first and skip the call
+    (falling back to local/non-AI behavior) if it returns `True`.
+  - On failure, call `provider_guard.report_failure("<provider>", status_code=...)` (or
+    with a sanitized message) so quota/billing/rate-limit/auth-shaped failures disable
+    the provider instead of being retried.
+  - Never pass an API key, token, cookie, or Authorization header into
+    `report_failure` — only a status code or an already-sanitized message.
+- Do not add retry loops around a paid/quota-limited provider call. One attempt, then
+  fall back or surface a non-blocking warning — see `verdictin60_core/ai.py`'s
+  `_nvidia_call` / `ai_generate` / `ai_identify` for the pattern to follow.
+- Cloud providers must never be required for the app to start or for local-only mode
+  to keep working.
+
 ## UI Rules
 
 - Keep the app focused on the desktop workflow, not a marketing-style interface.
