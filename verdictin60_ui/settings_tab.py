@@ -1,3 +1,4 @@
+import platform
 import tkinter as tk
 from tkinter import ttk
 
@@ -67,8 +68,31 @@ class SettingsDialog(tk.Toplevel):
         tabs_wrap = tk.Frame(self, bg=BG)
         tabs_wrap.pack(fill="x", padx=30, pady=(16, 0))
 
-        panels_host = tk.Frame(self, bg=BG)
-        panels_host.pack(fill="both", expand=True, padx=30, pady=(14, 0))
+        # Sub-tab content is wrapped in a scrollable canvas so panels taller
+        # than the dialog (e.g. AI with its provider/safety/advanced cards)
+        # can still be reached on smaller windows, instead of being clipped
+        # by the fixed-size Toplevel with no way to reach the rest.
+        scroll_wrap = tk.Frame(self, bg=BG)
+        scroll_wrap.pack(fill="both", expand=True, padx=30, pady=(14, 0))
+        panels_canvas = tk.Canvas(scroll_wrap, bg=BG, highlightthickness=0)
+        panels_scrollbar = ttk.Scrollbar(
+            scroll_wrap, orient="vertical", command=panels_canvas.yview)
+        panels_canvas.configure(yscrollcommand=panels_scrollbar.set)
+        panels_scrollbar.pack(side="right", fill="y")
+        panels_canvas.pack(side="left", fill="both", expand=True)
+
+        panels_host = tk.Frame(panels_canvas, bg=BG)
+        panels_win = panels_canvas.create_window((0, 0), window=panels_host, anchor="nw")
+
+        def _on_canvas_configure(e):
+            panels_canvas.itemconfig(panels_win, width=e.width)
+
+        def _on_panels_configure(_e):
+            panels_canvas.configure(scrollregion=panels_canvas.bbox("all"))
+
+        panels_canvas.bind("<Configure>", _on_canvas_configure)
+        panels_host.bind("<Configure>", _on_panels_configure)
+        self._bind_mousewheel(panels_canvas)
 
         active_speed_mode = self._resolve_speed_mode(s)
 
@@ -106,6 +130,42 @@ class SettingsDialog(tk.Toplevel):
         self.geometry(f"{dw}x{dh}+{px+(pw-dw)//2}+{py+(ph-dh)//2}")
 
     # ── One-time setup ───────────────────────────────────────────────────────
+
+    def _bind_mousewheel(self, canvas):
+        """Cross-platform wheel / trackpad scrolling for the settings panel.
+
+        Bound on the whole dialog (not just the canvas) for as long as it's
+        open: this is a modal Toplevel (grab_set()), so there's no other
+        window competing for wheel events, and binding at that level means
+        scrolling keeps working no matter which child widget (label, card,
+        entry, dropdown, or empty space) the cursor happens to be over.
+        Windows/Linux report delta in multiples of 120; macOS Aqua reports
+        small raw deltas, so it needs its own scale factor. Linux/X11 can
+        also deliver wheel as Button-4/5 clicks instead of MouseWheel.
+        """
+        is_mac = platform.system() == "Darwin"
+
+        def _on_wheel(event):
+            if event.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                canvas.yview_scroll(1, "units")
+            elif is_mac:
+                canvas.yview_scroll(int(-1 * event.delta), "units")
+            else:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        self.bind_all("<MouseWheel>", _on_wheel)
+        self.bind_all("<Button-4>", _on_wheel)
+        self.bind_all("<Button-5>", _on_wheel)
+        self.bind("<Destroy>", self._unbind_mousewheel)
+
+    def _unbind_mousewheel(self, event):
+        if event.widget is not self:
+            return
+        self.unbind_all("<MouseWheel>")
+        self.unbind_all("<Button-4>")
+        self.unbind_all("<Button-5>")
 
     def _build_combobox_style(self):
         """A dropdown style scoped to this dialog only (named style, so it
