@@ -44,6 +44,14 @@ This roadmap is a living guide. Keep changes practical and focused on making the
 - Add a repeatable build checklist.
 - Add a release checklist for local testing, credentials, app launch, export, and scheduling.
 
+## Phase 7: Research Hub
+
+- Built: a "Research Hub" tab (issue #52) — paste any combination of names, locations, dates, keywords, headlines, or platform URLs; AI case identification (title/aliases/confidence/reasoning/victims/suspects/timeline/outcome) that never invents facts and states plainly when confidence is too low, with a clue-based Low-confidence fallback if local AI identification times out; budgeted source research (`deadline_seconds`/`max_sources`) reusing the shared `research.py` pipeline; Wayback Machine archive recovery with manual lookup links for Archive.today/Memento/CachedView; results grouped into Official / Reporting (Accessible) / Reporting (Archived) / Blocked; Save to Case Library, Generate Caption, Copy All Sources, Copy Archive Links, Open All Sources, and Export Markdown actions.
+- Deferred follow-ups:
+  - A conversational AI research assistant (chat) that can answer follow-up questions grounded in the collected evidence — the current version supports one Investigate pass per set of clues.
+  - PDF export of the research report (Markdown export is available today).
+  - Drag-and-drop input for links (pasting multiple lines/links already works; drag-and-drop would need a new Tkinter dependency).
+
 ## Nice-To-Have Ideas
 
 - A local dashboard showing service health.

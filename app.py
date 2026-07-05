@@ -67,6 +67,7 @@ from verdictin60_ui.batch_tab import build_batch_tab
 from verdictin60_ui.url_import_tab import build_url_tab
 from verdictin60_ui.library_tab import build_library_tab
 from verdictin60_ui.recovery_tab import build_recovery_tab
+from verdictin60_ui.research_tab import build_research_hub_tab
 
 ASSETS_DIR    = Path(__file__).parent / "assets"
 OUTPUT_DIR    = Path(__file__).parent / "finished-reels"
@@ -464,6 +465,7 @@ class App(tk.Tk):
         ("single",   "▶", "SINGLE EXPORT"),
         ("batch",    "▤", "BATCH"),
         ("url",      "🔗", "URL IMPORT"),
+        ("research", "🔎", "RESEARCH HUB"),
         ("library",  "▥", "LIBRARY"),
         ("recovery", "⛭", "RECOVERY"),
     ]
@@ -529,17 +531,19 @@ class App(tk.Tk):
         tk.Frame(outer, bg=BORDER, height=1).pack(fill="x")
 
         # ── Tab content frames ────────────────────────────────────────────────
-        self._single_frame  = tk.Frame(outer, bg=BG)
-        self._batch_frame   = tk.Frame(outer, bg=BG)
-        self._url_frame     = tk.Frame(outer, bg=BG)
-        self._library_frame = tk.Frame(outer, bg=BG)
+        self._single_frame   = tk.Frame(outer, bg=BG)
+        self._batch_frame    = tk.Frame(outer, bg=BG)
+        self._url_frame      = tk.Frame(outer, bg=BG)
+        self._research_frame = tk.Frame(outer, bg=BG)
+        self._library_frame  = tk.Frame(outer, bg=BG)
         self._recovery_frame = tk.Frame(outer, bg=BG)
         self._single_frame.pack(fill="both", expand=True)
-        # batch / url / library frames hidden initially
+        # batch / url / research / library frames hidden initially
 
         build_single_tab(self, self._single_frame)
         build_batch_tab(self, self._batch_frame)
         build_url_tab(self, self._url_frame)
+        build_research_hub_tab(self, self._research_frame)
         build_library_tab(self, self._library_frame)
         build_recovery_tab(self, self._recovery_frame)
 
@@ -552,13 +556,14 @@ class App(tk.Tk):
         "single":   "SINGLE EXPORT",
         "batch":    "BATCH",
         "url":      "URL IMPORT",
+        "research": "RESEARCH HUB",
         "library":  "LIBRARY",
         "recovery": "RECOVERY",
     }
 
     def _switch_tab(self, tab: str):
-        for f in (self._single_frame, self._batch_frame,
-                  self._url_frame, self._library_frame, self._recovery_frame):
+        for f in (self._single_frame, self._batch_frame, self._url_frame,
+                  self._research_frame, self._library_frame, self._recovery_frame):
             f.pack_forget()
         for key, row in self._nav_rows.items():
             set_sidebar_active(row) if key == tab else set_sidebar_inactive(row)
@@ -569,6 +574,8 @@ class App(tk.Tk):
             self._batch_frame.pack(fill="both", expand=True)
         elif tab == "url":
             self._url_frame.pack(fill="both", expand=True)
+        elif tab == "research":
+            self._research_frame.pack(fill="both", expand=True)
         elif tab == "library":
             self._library_frame.pack(fill="both", expand=True)
             self._lib_tab.refresh()
