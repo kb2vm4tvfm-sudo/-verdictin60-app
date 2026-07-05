@@ -22,7 +22,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from verdictin60_core.ai import ollama_identify, ollama_generate, is_timeout_error
+from verdictin60_core.ai import ai_identify, ai_generate, is_timeout_error
 from verdictin60_core.captions import caption_needs_fallback
 from verdictin60_core.research import (
     fetch_wikipedia_summary, gather_verification_sources,
@@ -251,7 +251,7 @@ def identify_case(raw_clue_text: str) -> dict:
         }
     prompt = _build_identify_prompt(clues)
     try:
-        raw = ollama_identify(prompt)
+        raw = ai_identify(prompt)
         data = _parse_identify_json(raw)
         if data is None:
             raise ValueError("AI response was not valid JSON")
@@ -442,7 +442,7 @@ def generate_caption(result: dict) -> str:
         "- Return only the caption."
     )
     try:
-        raw = ollama_generate(prompt, task="caption")
+        raw = ai_generate(prompt, task="caption")
         reason = caption_needs_fallback(raw)
         if not reason:
             return re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL | re.IGNORECASE).strip()
