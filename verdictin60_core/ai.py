@@ -225,18 +225,29 @@ def ai_task_ready(task: str) -> bool:
     return ready
 
 
-def _nvidia_call(model: str, prompt: str, timeout: int = 60, num_predict: int = 1000) -> str:
+# Tasks where deterministic, low-randomness output matters more than variety —
+# identification/verification should reliably return the same well-formed
+# answer for the same input rather than creative prose.
+NVIDIA_LOW_TEMPERATURE_TASKS = ("identify", "verify")
+NVIDIA_LOW_TEMPERATURE = 0.1
+
+
+def _nvidia_call(model: str, prompt: str, timeout: int = 60, num_predict: int = 1000,
+                 temperature: float = None) -> str:
     """Low-level NVIDIA NIM call via its OpenAI-compatible chat completions
     endpoint. Raises NvidiaAPIError on any failure; never logs the API key."""
     api_key = get_nvidia_api_key()
     if not api_key:
         raise NvidiaAPIError("No NVIDIA API key configured")
-    payload = json.dumps({
+    payload_dict = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": num_predict,
         "stream": False,
-    }).encode()
+    }
+    if temperature is not None:
+        payload_dict["temperature"] = temperature
+    payload = json.dumps(payload_dict).encode()
     req = urllib.request.Request(
         f"{NVIDIA_API_BASE}/chat/completions",
         data=payload,
@@ -254,18 +265,42 @@ def _nvidia_call(model: str, prompt: str, timeout: int = 60, num_predict: int = 
     except Exception as e:
         raise NvidiaAPIError(f"NVIDIA NIM request failed: {e}") from e
     try:
-        return data["choices"][0]["message"]["content"] or ""
+        message = data["choices"][0]["message"]
     except (KeyError, IndexError, TypeError) as e:
         raise NvidiaAPIError("NVIDIA NIM response missing expected content") from e
+    content = message.get("content") or ""
+    if content:
+        return content
+    # Some NVIDIA NIM models emit a tool-call style response (arguments in
+    # message["tool_calls"]) instead of plain content. Hand back the raw
+    # tool_calls JSON so callers can still recover the object-like payload.
+    tool_calls = message.get("tool_calls")
+    if isinstance(tool_calls, list) and tool_calls:
+        try:
+            return json.dumps({"tool_calls": tool_calls})
+        except (TypeError, ValueError):
+            pass
+    return content
 
 
 def nvidia_generate(prompt: str, task: str = "caption", timeout: int = 60,
                     num_predict: int = 1000) -> str:
-    return _nvidia_call(get_nvidia_model(task), prompt, timeout, num_predict)
+    temperature = NVIDIA_LOW_TEMPERATURE if task in NVIDIA_LOW_TEMPERATURE_TASKS else None
+    return _nvidia_call(get_nvidia_model(task), prompt, timeout, num_predict, temperature=temperature)
 
 
-def nvidia_identify(prompt: str, timeout: int = 30) -> str:
-    return _nvidia_call(get_nvidia_model("identify"), prompt, timeout, 400)
+# Identify responses are a single JSON object with several list fields
+# (aliases/victims/suspects/related_people/timeline). 400 tokens was too
+# tight — real NVIDIA NIM responses were observed getting cut off mid-JSON
+# (see issue #59), so the parser would receive a truncated, unbalanced
+# object. Raised enough to fit the full (now field-capped, see
+# _IDENTIFY_PROMPT_TEMPLATE) schema with headroom.
+NVIDIA_IDENTIFY_MAX_TOKENS = 900
+
+
+def nvidia_identify(prompt: str, timeout: int = 45) -> str:
+    return _nvidia_call(get_nvidia_model("identify"), prompt, timeout, NVIDIA_IDENTIFY_MAX_TOKENS,
+                        temperature=NVIDIA_LOW_TEMPERATURE)
 
 
 def ai_generate(prompt: str, timeout: int = None, task: str = "caption",
@@ -304,7 +339,7 @@ def ai_identify(prompt: str, timeout: int = None) -> str:
     mode = get_ai_provider_mode()
     if mode == "Cloud only" and nvidia_available():
         try:
-            return nvidia_identify(prompt, timeout=timeout or 30)
+            return nvidia_identify(prompt, timeout=timeout or 45)
         except Exception as e:
             print(f"[AI] NVIDIA NIM identify failed in Cloud-only mode ({e}); falling back to Ollama")
             return ollama_identify(prompt, timeout=timeout)
@@ -314,7 +349,7 @@ def ai_identify(prompt: str, timeout: int = None) -> str:
         if mode == "Cloud fallback" and nvidia_available():
             print(f"[AI] Ollama identify failed ({e}); trying NVIDIA NIM fallback")
             try:
-                return nvidia_identify(prompt, timeout=timeout or 30)
+                return nvidia_identify(prompt, timeout=timeout or 45)
             except Exception as nvidia_exc:
                 print(f"[AI] NVIDIA NIM identify fallback also failed: {nvidia_exc}")
         raise
