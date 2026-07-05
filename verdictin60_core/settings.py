@@ -24,6 +24,8 @@ def load_settings() -> dict:
         "nvidia_model_verify": "", "nvidia_model_research": "",
         "nvidia_model_rerank": "", "nvidia_model_ocr": "",
         "nvidia_model_safety": "",
+        "cloud_spending_guard": True,
+        "disable_provider_after_first_error": True,
     }
 
 

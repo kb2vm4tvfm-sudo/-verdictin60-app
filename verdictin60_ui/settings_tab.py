@@ -2,7 +2,8 @@ import tkinter as tk
 from tkinter import ttk
 
 from verdictin60_core.settings import load_settings, save_settings
-from verdictin60_core.ai import AI_SPEED_MODES, NVIDIA_TASK_FIELDS
+from verdictin60_core.ai import AI_SPEED_MODES, NVIDIA_TASK_FIELDS, get_nvidia_status
+from verdictin60_core import provider_guard
 from verdictin60_ui.widgets import BG, CRIMSON, CRIMSON_HOT, WHITE, LIGHT_GRAY, _make_lbtn
 from verdictin60_ui.theme import CARD, BORDER, TEXT_MUTED, INPUT_BG, SPACE_MD
 from verdictin60_ui.components import (
@@ -28,6 +29,15 @@ AI_PROVIDER_LABEL_TO_MODE = {v: k for k, v in AI_PROVIDER_MODE_LABELS.items()}
 
 
 class SettingsDialog(tk.Toplevel):
+    # Provider status label -> make_badge() status key.
+    _STATUS_BADGE = {
+        "Active": "success",
+        "Missing key": "neutral",
+        "Rate limited": "warning",
+        "Quota reached": "error",
+        "Disabled": "error",
+    }
+
     def __init__(self, parent):
         super().__init__(parent)
         self.transient(parent)
@@ -38,6 +48,7 @@ class SettingsDialog(tk.Toplevel):
 
         s = load_settings()
         self._vars = {}
+        self._bool_vars = {}
         self._style = self._build_combobox_style()
 
         # Top accent bar
@@ -220,6 +231,37 @@ class SettingsDialog(tk.Toplevel):
         key_row.pack(fill="x")
         self._make_entry(key_row, "nvidia_api_key", s.get("nvidia_api_key", ""), True)
 
+        self._section_label(panel, "SAFETY  —  COST / QUOTA GUARD")
+        safety_card = make_card(panel)
+        safety_card.pack(fill="x", pady=(SPACE_MD, 0))
+        safety_body = card_body(safety_card)
+        tk.Label(
+            safety_body,
+            text="Stops calling a cloud provider for the rest of this session after it reports "
+                 "a quota, billing, rate-limit, or access error, so VerdictIn60 never loops "
+                 "into unexpected charges. Ollama and local-only mode are never affected.",
+            font=("Helvetica", 9), fg=TEXT_MUTED, bg=CARD, anchor="w",
+            wraplength=520, justify="left",
+        ).pack(fill="x", pady=(0, SPACE_MD))
+        self._make_checkbox(
+            safety_body, "cloud_spending_guard",
+            "Cloud/service spending guard", bool(s.get("cloud_spending_guard", True)),
+        )
+        self._make_checkbox(
+            safety_body, "disable_provider_after_first_error",
+            "Disable provider after first quota/billing/rate-limit error",
+            bool(s.get("disable_provider_after_first_error", True)),
+        )
+        tk.Frame(safety_body, bg=BORDER, height=1).pack(fill="x", pady=(SPACE_MD, SPACE_MD))
+        status_row = tk.Frame(safety_body, bg=CARD)
+        status_row.pack(fill="x")
+        tk.Label(status_row, text="NVIDIA:", font=("Helvetica", 9, "bold"),
+                 fg=WHITE, bg=CARD, anchor="w").pack(side="left")
+        nvidia_status = get_nvidia_status()
+        make_badge(
+            status_row, nvidia_status, status=self._STATUS_BADGE.get(nvidia_status, "neutral")
+        ).pack(side="left", padx=(8, 0))
+
         self._section_label(panel, "ADVANCED  —  PER-TASK NVIDIA MODELS (OPTIONAL)")
         advanced_card = make_card(panel)
         advanced_card.pack(fill="x", pady=(SPACE_MD, 0))
@@ -329,6 +371,17 @@ class SettingsDialog(tk.Toplevel):
             row.pack(fill="x")
             self._make_entry(row, key, value, masked)
 
+    def _make_checkbox(self, parent, key, label, value):
+        var = tk.BooleanVar(value=value)
+        cb = tk.Checkbutton(
+            parent, text=label, variable=var, onvalue=True, offvalue=False,
+            font=("Helvetica", 10), fg=WHITE, bg=CARD, activebackground=CARD,
+            activeforeground=WHITE, selectcolor=INPUT_BG,
+            highlightthickness=0, bd=0, anchor="w",
+        )
+        cb.pack(fill="x", anchor="w", pady=(0, 4))
+        self._bool_vars[key] = var
+
     def _make_entry(self, parent, key, value, masked):
         e = tk.Entry(parent, show="*" if masked else "",
                      font=("Helvetica", 11), fg=WHITE, bg=INPUT_BG,
@@ -344,6 +397,7 @@ class SettingsDialog(tk.Toplevel):
     def _save(self):
         current = load_settings()
         current.update({k: v.get().strip() for k, v in self._vars.items()})
+        current.update({k: bool(v.get()) for k, v in self._bool_vars.items()})
         speed_mode = self._ai_speed_var.get().strip()
         if speed_mode not in AI_SPEED_MODES:
             speed_mode = "Balanced"
@@ -353,4 +407,9 @@ class SettingsDialog(tk.Toplevel):
         current["ai_provider_mode"] = AI_PROVIDER_LABEL_TO_MODE.get(provider_label, "Local only")
         current["preferred_browser"] = self._browser_var.get().strip()
         save_settings(current)
+        # Quota/billing and auth disables last "until app restart or settings
+        # change" per the cost/quota safety guard rules — saving Settings is
+        # that explicit "try again" signal. Rate-limit cooldowns are strictly
+        # time-based and are left alone.
+        provider_guard.clear_settings_triggered_disables("nvidia")
         self.destroy()

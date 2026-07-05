@@ -20,6 +20,7 @@ import urllib.error
 import urllib.request
 
 from verdictin60_core.settings import load_settings
+from verdictin60_core import provider_guard
 
 AI_SPEED_MODES = {
     "Fast": {
@@ -200,6 +201,19 @@ def nvidia_available() -> bool:
     return bool(get_nvidia_api_key())
 
 
+def nvidia_ready() -> bool:
+    """True if NVIDIA NIM has a key configured and isn't disabled by the
+    cost/quota safety guard (rate-limited, quota-exhausted, or auth failure)."""
+    return nvidia_available() and not provider_guard.is_provider_disabled("nvidia")
+
+
+def get_nvidia_status() -> str:
+    """Human-readable status for the read-only Settings provider list."""
+    if not nvidia_available():
+        return "Missing key"
+    return provider_guard.provider_status("nvidia")
+
+
 def get_nvidia_model(task: str) -> str:
     """Resolve the NVIDIA NIM model for `task`: the user's per-task override
     from Settings > AI > Advanced if they filled one in, otherwise the app
@@ -218,9 +232,9 @@ def ai_task_ready(task: str) -> bool:
     key configured."""
     mode = get_ai_provider_mode()
     if mode == "Cloud only":
-        return nvidia_available()
+        return nvidia_ready()
     ready = check_ollama_model_installed(get_ai_model(task))
-    if mode == "Cloud fallback" and nvidia_available():
+    if mode == "Cloud fallback" and nvidia_ready():
         return True
     return ready
 
@@ -235,7 +249,15 @@ NVIDIA_LOW_TEMPERATURE = 0.1
 def _nvidia_call(model: str, prompt: str, timeout: int = 60, num_predict: int = 1000,
                  temperature: float = None) -> str:
     """Low-level NVIDIA NIM call via its OpenAI-compatible chat completions
-    endpoint. Raises NvidiaAPIError on any failure; never logs the API key."""
+    endpoint. Raises NvidiaAPIError on any failure; never logs the API key.
+
+    Checks the cost/quota safety guard first and refuses to make the request
+    at all while NVIDIA is disabled (rate-limited, quota-exhausted, or an
+    auth failure) — see verdictin60_core/provider_guard.py."""
+    if provider_guard.is_provider_disabled("nvidia"):
+        raise NvidiaAPIError(
+            "NVIDIA NIM temporarily disabled by the cost/quota safety guard"
+        )
     api_key = get_nvidia_api_key()
     if not api_key:
         raise NvidiaAPIError("No NVIDIA API key configured")
@@ -261,13 +283,21 @@ def _nvidia_call(model: str, prompt: str, timeout: int = 60, num_predict: int = 
         data = json.loads(r.read())
     except urllib.error.HTTPError as e:
         # 401/403 = bad/missing access, 402 = payment required, 429 = rate/quota.
+        # Report the status code (never the request/response body) to the
+        # guard so it can disable NVIDIA per the configured cooldown rules.
+        provider_guard.report_failure("nvidia", status_code=e.code)
         raise NvidiaAPIError(f"NVIDIA NIM HTTP {e.code}") from e
     except Exception as e:
+        # Network errors/timeouts aren't billing-risk failures — classify by
+        # message text (no key/headers ever included) but don't force a
+        # disable unless it actually looks like quota/rate-limit/auth.
+        provider_guard.report_failure("nvidia", str(e))
         raise NvidiaAPIError(f"NVIDIA NIM request failed: {e}") from e
     try:
         message = data["choices"][0]["message"]
     except (KeyError, IndexError, TypeError) as e:
         raise NvidiaAPIError("NVIDIA NIM response missing expected content") from e
+    provider_guard.report_success("nvidia")
     content = message.get("content") or ""
     if content:
         return content
