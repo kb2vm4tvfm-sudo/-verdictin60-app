@@ -27,19 +27,16 @@ AI_SPEED_MODES = {
         "identify": "llama3.1:8b",
         "caption": "llama3.1:8b",
         "verify": "llama3.1:8b",
-        "research": "llama3.1:8b",
     },
     "Balanced": {
         "identify": "llama3.1:8b",
         "caption": "qwen3:14b",
         "verify": "qwen3:14b",
-        "research": "qwen3:14b",
     },
     "Best Accuracy": {
         "identify": "llama3.1:8b",
         "caption": "qwen3:32b",
         "verify": "qwen3:32b",
-        "research": "qwen3:32b",
     },
 }
 
@@ -172,7 +169,6 @@ NVIDIA_TASK_FIELDS = [
     ("identify", "Case identification model", "nvidia/nemotron-3-ultra-550b-a55b"),
     ("caption", "Caption generation model", "nvidia/nemotron-3-ultra-550b-a55b"),
     ("verify", "Verification model", "nvidia/nemotron-3-ultra-550b-a55b"),
-    ("research", "Research Hub model", "nvidia/nemotron-3-ultra-550b-a55b"),
     ("rerank", "Source rerank model", "nvidia/llama-nemotron-rerank-1b-v2"),
     ("ocr", "OCR model", "nvidia/nemotron-ocr-v2"),
     ("safety", "Safety model", "nvidia/nemotron-3.5-content-safety"),
@@ -333,15 +329,9 @@ def nvidia_identify(prompt: str, timeout: int = 45) -> str:
                         temperature=NVIDIA_LOW_TEMPERATURE)
 
 
-# Per-task NVIDIA NIM timeout overrides. "research" (Research Hub post-draft
-# JSON and caption generation, verdictin60_core/research_hub.py) sends a much
-# larger prompt — a full verified-fact-sheet plus up to ~8KB of source text —
-# than a routine caption rewrite, and needs more time for a cloud model to
-# produce a real response rather than an empty one or a genuine timeout (see
-# issue #67). Tasks with no entry here keep the plain 60s default.
-NVIDIA_TASK_TIMEOUTS = {
-    "research": 90,
-}
+# Per-task NVIDIA NIM timeout overrides. Tasks with no entry here keep the
+# plain 60s default.
+NVIDIA_TASK_TIMEOUTS = {}
 NVIDIA_DEFAULT_TIMEOUT = 60
 
 

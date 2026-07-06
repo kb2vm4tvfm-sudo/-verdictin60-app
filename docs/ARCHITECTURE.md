@@ -1,17 +1,16 @@
 # VerdictIn60 Architecture
 
-VerdictIn60 is a Python desktop application centered around `app.py`, with `case_library.py` providing the local case database and library UI. The app uses local files for settings, generated media, logs, cache, and SQLite data.
+VerdictIn60 is a Python desktop application centered around `app.py`, with `case_library.py` providing the local case database used by the Batch tab. The app is intentionally scoped to three tabs — Batch, Recovery, and Settings — and uses local files for settings, generated media, logs, cache, and SQLite data.
 
 ## High-Level Flow
 
 ```text
-User input / DOCX / URL
+Local file / URL / DOCX queue (Batch tab)
         |
         v
 Tkinter app in app.py
         |
-        +--> source download and metadata through yt-dlp
-        +--> caption generation and verification through Ollama and web sources
+        +--> source download through yt-dlp (for queued URL rows)
         +--> video processing through ffmpeg and assets/
         +--> upload through Internet Archive
         +--> scheduling through Buffer
@@ -24,17 +23,13 @@ Tkinter app in app.py
 
 Responsibilities:
 
-- App startup and Tkinter UI.
+- App startup and Tkinter UI: Batch tab, Recovery tab, and the Settings dialog.
 - Settings loading and saving through `settings.json`.
 - DOCX queue parsing from `VerdictIn60_Import_With_Captions.docx`.
-- URL import with yt-dlp and browser-cookie fallbacks.
-- Source research and verification helpers.
-- Ollama model selection and local AI calls.
-- Caption formatting, fallback captions, and caption review.
+- Batch caption formatting/reformatting.
 - ffmpeg export pipeline.
 - Internet Archive upload.
 - Buffer scheduling.
-- Instagram/Meta connection helpers and metrics lookup.
 - Recovery assistant and health checks.
 
 ### case_library.py
@@ -45,7 +40,6 @@ Responsibilities:
 - Case upsert, status update, caption edit, delete, and timeline events.
 - Buffer scheduled-post sync.
 - Thumbnail generation with Pillow.
-- Library grid UI and case detail dialog.
 
 ### verdictin60_captions.py
 
@@ -63,7 +57,6 @@ Local storage paths are rooted beside `app.py`:
 - `finished-reels/`: generated final videos. Ignored by Git.
 - `_docx_downloads/`: downloaded source videos. Ignored by Git.
 - `library_thumbs/`: generated thumbnails. Ignored by Git.
-- `source-cache.json`: source research cache. Ignored by Git.
 - `export-log.txt` and other `*.log`: local logs. Ignored by Git.
 
 ## Video Pipeline
@@ -76,15 +69,9 @@ The app uses:
 
 Long-running video work should remain off the Tkinter main thread.
 
-## Caption And AI Pipeline
+## AI/Provider Settings
 
-The app can use Ollama models in speed modes:
-
-- Fast.
-- Balanced.
-- Best Accuracy.
-
-Caption generation should remain grounded in available sources. When source confidence is low or AI fails, the app falls back to safer caption behavior instead of fabricating details.
+Settings still exposes AI speed mode and provider configuration (`verdictin60_core/ai.py`), and Recovery's health check still verifies that the configured Ollama models are installed. No tab currently calls the AI caption-generation pipeline directly — Batch captions come from `reformat_caption` — but the provider settings and safety/cost guard (`verdictin60_core/provider_guard.py`) remain in place for Recovery diagnostics and future use.
 
 ## Upload And Scheduling
 
@@ -96,8 +83,6 @@ Tkinter must remain responsive. Background work is used for:
 
 - yt-dlp downloads.
 - ffmpeg processing.
-- Ollama calls.
-- source fetching.
 - uploads and scheduling.
 - Buffer sync.
 - thumbnail generation.
@@ -107,12 +92,11 @@ UI updates from background work should be marshalled back through Tkinter-safe c
 ## Risk Areas
 
 - Credential leaks through logs, settings, examples, or commits.
-- UI freezes from blocking network, ffmpeg, or AI calls on the main thread.
+- UI freezes from blocking network or ffmpeg calls on the main thread.
 - Buffer API changes or GraphQL response shape changes.
 - Internet Archive upload propagation delays.
 - yt-dlp changes or browser-cookie access issues.
 - ffmpeg command regressions that break finished reel output.
-- Caption hallucinations or unverified true-crime claims.
 
 ## Safe Change Strategy
 

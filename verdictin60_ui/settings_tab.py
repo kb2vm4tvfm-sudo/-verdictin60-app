@@ -16,7 +16,6 @@ SETTINGS_TABS = [
     ("appearance", "Appearance"),
     ("ai", "AI"),
     ("models", "Models"),
-    ("verification", "Verification"),
     ("exports", "Exports"),
     ("advanced", "Advanced"),
 ]
@@ -101,7 +100,6 @@ class SettingsDialog(tk.Toplevel):
             "appearance":   self._build_appearance(panels_host),
             "ai":           self._build_ai(panels_host, active_speed_mode),
             "models":       self._build_models(panels_host, active_speed_mode),
-            "verification": self._build_verification(panels_host),
             "exports":      self._build_exports(panels_host, s),
             "advanced":     self._build_advanced(panels_host, s),
         }
@@ -359,26 +357,6 @@ class SettingsDialog(tk.Toplevel):
                      f"   ·   Verify: {cfg.get('verify', '—')}",
                 font=("Helvetica", 9), fg=TEXT_MUTED, bg=CARD, anchor="w",
             ).pack(fill="x", pady=(4, 0))
-        return panel
-
-    def _build_verification(self, parent):
-        panel = tk.Frame(parent, bg=BG)
-        card = make_card(panel)
-        card.pack(fill="x")
-        body = card_body(card)
-        head = tk.Frame(body, bg=CARD)
-        head.pack(fill="x")
-        tk.Label(head, text="Source Verification", font=("Helvetica", 11, "bold"),
-                 fg=WHITE, bg=CARD, anchor="w").pack(side="left")
-        make_badge(head, "AUTOMATIC", status="info").pack(side="left", padx=(8, 0))
-        tk.Label(
-            body,
-            text="Every imported case is checked against independent sources before a caption "
-                 "is finalized. Verification runs automatically during import and export and has "
-                 "no user-configurable options yet.",
-            font=("Helvetica", 9), fg=TEXT_MUTED, bg=CARD, anchor="w",
-            wraplength=520, justify="left",
-        ).pack(fill="x", pady=(6, 0))
         return panel
 
     def _build_exports(self, parent, s):

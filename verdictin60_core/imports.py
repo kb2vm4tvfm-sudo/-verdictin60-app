@@ -3,8 +3,6 @@
 - ytdlp_cmd: build a yt-dlp command that works when launched from Dock or Terminal.
 - parse_docx_queue: read a DOCX table with columns URL / Case Title / Caption.
 - download_video_url: download a URL with yt-dlp using browser-cookie fallbacks.
-- parse_ytdlp_metadata: pull title/uploader/description/tags out of a yt-dlp
-  ``--dump-json`` metadata dict.
 """
 import re
 import shutil
@@ -143,24 +141,3 @@ def download_video_url(url: str, outdir: Path, settings: dict, log_lines: list,
                 return max(files, key=lambda p: p.stat().st_mtime)
     stderr = (last_result.stderr if last_result else "")[:400]
     raise RuntimeError(f"Video download failed. {stderr}")
-
-
-def parse_ytdlp_metadata(meta: dict) -> tuple[str, str, str, str]:
-    """Pull (title, uploader, full_text, tags) out of a yt-dlp --dump-json dict."""
-    vid_title = meta.get("title", "") or ""
-    uploader = (
-        meta.get("uploader")
-        or meta.get("uploader_id")
-        or meta.get("channel")
-        or ""
-    )
-    full_text = (
-        meta.get("description") or
-        meta.get("comment") or
-        meta.get("title") or
-        meta.get("fulltitle") or
-        meta.get("webpage_url_basename") or
-        ""
-    )
-    tags = ", ".join(meta.get("tags", []) or [])
-    return vid_title, uploader, full_text, tags
