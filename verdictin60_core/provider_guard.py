@@ -8,11 +8,16 @@ retrying blindly:
      fall back to local/non-AI behavior if it returns True.
   2. Call `report_failure(name, ...)` when a call fails. Quota/billing/
      rate-limit/auth-shaped failures disable the provider for the rest of the
-     session (or for a cooldown window, for plain rate limits); ordinary
-     network blips/timeouts do not.
+     session (or for a cooldown window, for plain rate limits and timeouts);
+     other, unclassified failures do not.
   3. Call `clear_settings_triggered_disables(name)` when the user saves
      Settings, since quota and auth disables are documented to last "until
      app restart or settings change".
+
+A bare request timeout gets its own short cooldown (see TIMEOUT below):
+a single slow/unreachable provider shouldn't be retried again a few seconds
+later by the next step of the same workflow (e.g. Research Hub's post draft
+then caption generation, issue #67) only to time out a second time.
 
 This module never logs anything and never receives API keys/tokens/headers —
 callers must only ever pass sanitized status codes or generic error text
@@ -26,12 +31,19 @@ from verdictin60_core.settings import load_settings
 RATE_LIMIT = "rate_limit"
 QUOTA = "quota"
 AUTH = "auth"
+TIMEOUT = "timeout"
 UNKNOWN = "unknown"
 
-# Rate limits are the one category that recovers on its own; quota/billing
-# and auth failures stay disabled until the user restarts the app or changes
-# settings (see clear_settings_triggered_disables).
+# Rate limits and timeouts recover on their own after a cooldown; quota/
+# billing and auth failures stay disabled until the user restarts the app or
+# changes settings (see clear_settings_triggered_disables).
 RATE_LIMIT_COOLDOWN_SECONDS = 10 * 60
+
+# Short on purpose — long enough that the next step of the *same* workflow
+# (e.g. post draft then caption generation) skips straight to the local
+# fallback instead of waiting out a second identical timeout, short enough
+# that the next unrelated investigation still gets a fresh cloud attempt.
+TIMEOUT_COOLDOWN_SECONDS = 2 * 60
 
 # How many consecutive classified failures are required before a provider is
 # disabled when the user has turned off "disable after first error".
@@ -58,10 +70,11 @@ _AUTH_RE = re.compile(
     r"invalid.{0,10}key|token expired|expired token",
     re.I,
 )
+_TIMEOUT_RE = re.compile(r"timed out|timeout", re.I)
 
 
 def classify_failure(exc_or_message=None, status_code=None) -> str:
-    """Classify a provider failure as rate_limit / quota / auth / unknown.
+    """Classify a provider failure as rate_limit / quota / auth / timeout / unknown.
 
     Prefer `status_code` (authoritative, e.g. an HTTP status) when the caller
     has one; otherwise fall back to pattern-matching the message text. Never
@@ -83,6 +96,8 @@ def classify_failure(exc_or_message=None, status_code=None) -> str:
         return RATE_LIMIT
     if _AUTH_RE.search(text):
         return AUTH
+    if _TIMEOUT_RE.search(text):
+        return TIMEOUT
     return UNKNOWN
 
 
@@ -116,13 +131,15 @@ def provider_status(provider: str) -> str:
         return "Rate limited"
     if category == QUOTA:
         return "Quota reached"
+    if category == TIMEOUT:
+        return "Timed out — retrying shortly"
     return "Disabled"
 
 
 def report_failure(provider: str, exc_or_message=None, status_code=None) -> str:
     """Record a provider failure. Disables the provider per the safety
-    settings if the failure classifies as rate_limit/quota/auth. Returns the
-    classified category (callers may ignore it)."""
+    settings if the failure classifies as rate_limit/quota/auth/timeout.
+    Returns the classified category (callers may ignore it)."""
     category = classify_failure(exc_or_message, status_code=status_code)
     if category == UNKNOWN or not _guard_enabled():
         return category
@@ -134,7 +151,12 @@ def report_failure(provider: str, exc_or_message=None, status_code=None) -> str:
             return category
 
     _STRIKES.pop(provider, None)
-    until = time.time() + RATE_LIMIT_COOLDOWN_SECONDS if category == RATE_LIMIT else None
+    if category == RATE_LIMIT:
+        until = time.time() + RATE_LIMIT_COOLDOWN_SECONDS
+    elif category == TIMEOUT:
+        until = time.time() + TIMEOUT_COOLDOWN_SECONDS
+    else:
+        until = None
     _STATE[provider] = {"category": category, "disabled_until": until}
     return category
 

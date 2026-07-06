@@ -333,6 +333,22 @@ def nvidia_identify(prompt: str, timeout: int = 45) -> str:
                         temperature=NVIDIA_LOW_TEMPERATURE)
 
 
+# Per-task NVIDIA NIM timeout overrides. "research" (Research Hub post-draft
+# JSON and caption generation, verdictin60_core/research_hub.py) sends a much
+# larger prompt — a full verified-fact-sheet plus up to ~8KB of source text —
+# than a routine caption rewrite, and needs more time for a cloud model to
+# produce a real response rather than an empty one or a genuine timeout (see
+# issue #67). Tasks with no entry here keep the plain 60s default.
+NVIDIA_TASK_TIMEOUTS = {
+    "research": 90,
+}
+NVIDIA_DEFAULT_TIMEOUT = 60
+
+
+def get_nvidia_timeout(task: str) -> int:
+    return NVIDIA_TASK_TIMEOUTS.get(task, NVIDIA_DEFAULT_TIMEOUT)
+
+
 def ai_generate(prompt: str, timeout: int = None, task: str = "caption",
                 num_predict: int = 1000) -> str:
     """Provider-aware caption/verify generation.
@@ -343,14 +359,19 @@ def ai_generate(prompt: str, timeout: int = None, task: str = "caption",
       original Ollama exception so existing callers' except-blocks (timeout
       detection, fallback captions, etc.) keep working unchanged.
     - "Cloud only": use NVIDIA NIM; if it errors (including quota/rate-limit/
-      payment/access), fall back to Ollama rather than crash.
+      payment/access/timeout), fall back to Ollama *for this one request*
+      rather than crash — the provider mode setting itself is not changed,
+      so the next call still tries NVIDIA first (unless the cost/quota guard
+      has since disabled it, e.g. after a timeout — see provider_guard.py).
     """
     mode = get_ai_provider_mode()
+    nvidia_timeout = timeout or get_nvidia_timeout(task)
     if mode == "Cloud only" and nvidia_available():
         try:
-            return nvidia_generate(prompt, task=task, timeout=timeout or 60, num_predict=num_predict)
+            return nvidia_generate(prompt, task=task, timeout=nvidia_timeout, num_predict=num_predict)
         except Exception as e:
-            print(f"[AI] NVIDIA NIM call failed in Cloud-only mode ({e}); falling back to Ollama")
+            print(f"[AI] NVIDIA NIM call failed in Cloud-only mode ({e}); using local Ollama as a "
+                  "one-off fallback for this request only — Cloud-only mode itself is unchanged")
             return ollama_generate(prompt, timeout=timeout, task=task, num_predict=num_predict)
     try:
         return ollama_generate(prompt, timeout=timeout, task=task, num_predict=num_predict)
@@ -358,7 +379,7 @@ def ai_generate(prompt: str, timeout: int = None, task: str = "caption",
         if mode == "Cloud fallback" and nvidia_available():
             print(f"[AI] Ollama failed for task={task} ({e}); trying NVIDIA NIM fallback")
             try:
-                return nvidia_generate(prompt, task=task, timeout=timeout or 60, num_predict=num_predict)
+                return nvidia_generate(prompt, task=task, timeout=nvidia_timeout, num_predict=num_predict)
             except Exception as nvidia_exc:
                 print(f"[AI] NVIDIA NIM fallback also failed: {nvidia_exc}")
         raise
@@ -371,7 +392,8 @@ def ai_identify(prompt: str, timeout: int = None) -> str:
         try:
             return nvidia_identify(prompt, timeout=timeout or 45)
         except Exception as e:
-            print(f"[AI] NVIDIA NIM identify failed in Cloud-only mode ({e}); falling back to Ollama")
+            print(f"[AI] NVIDIA NIM identify failed in Cloud-only mode ({e}); using local Ollama as a "
+                  "one-off fallback for this request only — Cloud-only mode itself is unchanged")
             return ollama_identify(prompt, timeout=timeout)
     try:
         return ollama_identify(prompt, timeout=timeout)

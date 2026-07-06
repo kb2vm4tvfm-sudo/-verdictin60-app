@@ -44,6 +44,13 @@ DEFAULT_HASHTAGS = (
 DEFAULT_DEADLINE_SECONDS = 75
 DEFAULT_MAX_SOURCES = 20
 
+# Post-draft JSON and caption generation ask for noticeably more output than
+# a routine caption rewrite (a full carousel body, or a caption with a
+# "Research & Verification" section plus 20 hashtags) — 1000 output tokens
+# risks truncating mid-response on either provider. Scoped to this module's
+# own ai_generate(task="research") calls only (see issue #67).
+_RESEARCH_NUM_PREDICT = 1600
+
 _PLATFORM_HOSTS = (
     ("Instagram", ("instagram.com",)),
     ("TikTok", ("tiktok.com",)),
@@ -637,24 +644,55 @@ def investigate(raw_clue_text: str, deadline_seconds: int = DEFAULT_DEADLINE_SEC
 # Caption generation
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _fallback_body_core(title: str) -> str:
-    """The cautious, fact-free paragraph shared by every template fallback
-    (caption and regular-post body) when the local AI is unavailable."""
-    return "\n\n".join([
-        f"{title} is the subject of this investigation.",
-        (
-            "With limited accessible source material, the most responsible way to "
-            "cover this case is to separate confirmed facts from online speculation "
-            "and avoid repeating details that cannot be independently checked."
-        ),
-        "What detail do you think should be verified first before people share this story?",
-    ])
+def _fallback_key_facts(case: dict) -> list:
+    """Up to 3 short facts for the template fallback, pulled only from what
+    identify_case already produced (timeline entries, then outcome) — never
+    invents anything here, so this is empty for a clue-based/unidentified
+    case exactly as it should be."""
+    facts = list(case.get("timeline") or [])[:2]
+    outcome = (case.get("outcome") or "").strip()
+    if outcome and len(facts) < 3:
+        facts.append(outcome)
+    return facts[:3]
 
 
-def _fallback_caption(case: dict, sources: list) -> str:
+def _fallback_confidence_line(confidence_label: str, confidence_reason: str) -> str:
+    if not confidence_label:
+        return ""
+    line = f"Verification status: {confidence_label} confidence"
+    if confidence_reason:
+        line += f" — {confidence_reason}"
+    return line
+
+
+def _fallback_body_core(title: str, case: dict = None, confidence_label: str = "",
+                        confidence_reason: str = "") -> str:
+    """The cautious paragraph shared by every template fallback (caption and
+    regular-post body) when the local AI is unavailable or fails. Only adds a
+    "Key facts" line when identify_case already produced timeline/outcome
+    entries, and a verification line when a confidence label is available —
+    it never invents anything itself."""
+    parts = [f"{title} is the subject of this investigation."]
+    key_facts = _fallback_key_facts(case or {})
+    if key_facts:
+        parts.append("Key facts:\n" + "\n".join(f"- {fact}" for fact in key_facts))
+    confidence_line = _fallback_confidence_line(confidence_label, confidence_reason)
+    if confidence_line:
+        parts.append(confidence_line)
+    parts.append(
+        "With limited accessible source material, the most responsible way to "
+        "cover this case is to separate confirmed facts from online speculation "
+        "and avoid repeating details that cannot be independently checked."
+    )
+    parts.append("What detail do you think should be verified first before people share this story?")
+    return "\n\n".join(parts)
+
+
+def _fallback_caption(case: dict, sources: list, confidence_label: str = "",
+                      confidence_reason: str = "") -> str:
     title = case.get("case_title") or "This case"
     research = source_section_for_caption(sources)
-    body = f"VerdictIn60: {title}\n\n{_fallback_body_core(title)}"
+    body = f"VerdictIn60: {title}\n\n{_fallback_body_core(title, case, confidence_label, confidence_reason)}"
     return f"{body}\n\n{research}\n\nFollow @VerdictIn60 for daily true crime.\n\n{DEFAULT_HASHTAGS}"
 
 
@@ -694,14 +732,14 @@ def generate_caption(result: dict) -> str:
         "- Return only the caption."
     )
     try:
-        raw = ai_generate(prompt, task="research")
+        raw = ai_generate(prompt, task="research", num_predict=_RESEARCH_NUM_PREDICT)
         reason = caption_needs_fallback(raw)
         if not reason:
             return re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL | re.IGNORECASE).strip()
         print(f"[RESEARCH_HUB] generated caption needs fallback: {reason}")
     except Exception as e:
-        print(f"[RESEARCH_HUB] caption generation failed: {e}")
-    return _fallback_caption(case, sources)
+        print(f"[RESEARCH_HUB] caption generation failed: {'timed out' if is_timeout_error(e) else e}")
+    return _fallback_caption(case, sources, confidence_label, confidence_reason)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -810,13 +848,15 @@ def _post_draft_needs_fallback(hook: str, body: str) -> str:
     return ""
 
 
-def _fallback_post_hook_body(case: dict) -> tuple:
+def _fallback_post_hook_body(case: dict, confidence_label: str = "",
+                             confidence_reason: str = "") -> tuple:
     """Simple template hook/body a user can edit manually, used when the
     local AI is unavailable or its output doesn't pass validation. Never
-    invents facts beyond the case title."""
+    invents facts beyond the case title, its own already-produced timeline/
+    outcome, and the verification confidence already computed for it."""
     title = case.get("case_title") or "This case"
     hook = f"{title}: what the record actually shows"
-    return hook, _fallback_body_core(title)
+    return hook, _fallback_body_core(title, case, confidence_label, confidence_reason)
 
 
 def generate_post_draft(result: dict) -> dict:
@@ -850,7 +890,7 @@ def generate_post_draft(result: dict) -> dict:
 
     hook, body, ai_used = "", "", False
     try:
-        raw = ai_generate(prompt, task="research")
+        raw = ai_generate(prompt, task="research", num_predict=_RESEARCH_NUM_PREDICT)
         data = _parse_post_draft_json(raw)
         candidate_hook = str(data.get("hook", "")).strip()
         candidate_body = re.sub(r'<think>.*?</think>', '', str(data.get("body", "")),
@@ -863,10 +903,10 @@ def generate_post_draft(result: dict) -> dict:
     except _PostDraftParseError as e:
         print(f"[RESEARCH_HUB] post draft AI response was not valid JSON ({e})")
     except Exception as e:
-        print(f"[RESEARCH_HUB] post draft generation failed: {e}")
+        print(f"[RESEARCH_HUB] post draft generation failed: {'timed out' if is_timeout_error(e) else e}")
 
     if not ai_used:
-        hook, body = _fallback_post_hook_body(case)
+        hook, body = _fallback_post_hook_body(case, confidence_label, confidence_reason)
 
     caption = generate_caption(result)
     hashtags = re.findall(r'(?<!\w)#\w+', caption)
