@@ -665,34 +665,100 @@ def _fallback_confidence_line(confidence_label: str, confidence_reason: str) -> 
     return line
 
 
+# Domain -> display name for well-known Tier-1/2 outlets, used only to name
+# outlets already present in `sources` in the fallback caption below. Purely
+# cosmetic (never affects which sources are gathered or how they're tiered —
+# that classification lives in verdictin60_core.research._classify_source).
+_FALLBACK_OUTLET_DISPLAY_NAMES = {
+    "nbcnews.com": "NBC News", "abcnews.go.com": "ABC News", "cbsnews.com": "CBS News",
+    "cnn.com": "CNN", "bbc.co": "BBC", "bbc.com": "BBC", "apnews.com": "AP News",
+    "reuters.com": "Reuters", "theguardian.com": "The Guardian",
+    "nytimes.com": "The New York Times", "washingtonpost.com": "The Washington Post",
+    "usatoday.com": "USA Today", "latimes.com": "The Los Angeles Times",
+    "people.com": "People", "today.com": "TODAY", "nypost.com": "The New York Post",
+}
+
+
+def _fallback_reliable_sources(sources: list) -> list:
+    """Accessible Tier-1/2+ sources (Official/Reporting/Investigative/Agency,
+    never Wikipedia) already gathered by Research Hub — used only to decide
+    whether the fallback caption can say sources were found."""
+    return [
+        s for s in (sources or [])
+        if not s.get("blocked") and s.get("kind") in ("Official", "Reporting", "Investigative", "Agency")
+    ]
+
+
+def _fallback_outlet_names(sources: list, limit: int = 3) -> list:
+    """Display names of recognized Tier-1/2 outlets among the reliable
+    sources, e.g. ["NBC News", "BBC"]. Unrecognised domains are skipped
+    rather than guessed at, so this never invents an outlet name."""
+    names = []
+    for src in _fallback_reliable_sources(sources):
+        domain = urllib.parse.urlparse(src.get("url", "")).netloc.lower().lstrip("www.")
+        for key, name in _FALLBACK_OUTLET_DISPLAY_NAMES.items():
+            if key in domain and name not in names:
+                names.append(name)
+                break
+        if len(names) >= limit:
+            break
+    return names
+
+
 def _fallback_body_core(title: str, case: dict = None, confidence_label: str = "",
-                        confidence_reason: str = "") -> str:
+                        confidence_reason: str = "", sources: list = None) -> str:
     """The cautious paragraph shared by every template fallback (caption and
     regular-post body) when the local AI is unavailable or fails. Only adds a
     "Key facts" line when identify_case already produced timeline/outcome
     entries, and a verification line when a confidence label is available —
     it never invents anything itself."""
+    reliable_sources = _fallback_reliable_sources(sources)
+    outlet_names = _fallback_outlet_names(sources)
+
     parts = [f"{title} is the subject of this investigation."]
+    if outlet_names:
+        parts.append(
+            "This case has been covered by " + _join_names(outlet_names) +
+            ", among the sources verified below."
+        )
     key_facts = _fallback_key_facts(case or {})
     if key_facts:
         parts.append("Key facts:\n" + "\n".join(f"- {fact}" for fact in key_facts))
     confidence_line = _fallback_confidence_line(confidence_label, confidence_reason)
     if confidence_line:
         parts.append(confidence_line)
-    parts.append(
-        "With limited accessible source material, the most responsible way to "
-        "cover this case is to separate confirmed facts from online speculation "
-        "and avoid repeating details that cannot be independently checked."
-    )
+    if reliable_sources:
+        parts.append(
+            "This account is grounded in the independently verified reporting listed below; "
+            "any detail that isn't backed by those sources has intentionally been left out "
+            "until it can be independently checked."
+        )
+    else:
+        parts.append(
+            "With limited accessible source material, the most responsible way to "
+            "cover this case is to separate confirmed facts from online speculation "
+            "and avoid repeating details that cannot be independently checked."
+        )
     parts.append("What detail do you think should be verified first before people share this story?")
     return "\n\n".join(parts)
+
+
+def _join_names(names: list) -> str:
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return f"{', '.join(names[:-1])}, and {names[-1]}"
 
 
 def _fallback_caption(case: dict, sources: list, confidence_label: str = "",
                       confidence_reason: str = "") -> str:
     title = case.get("case_title") or "This case"
     research = source_section_for_caption(sources)
-    body = f"VerdictIn60: {title}\n\n{_fallback_body_core(title, case, confidence_label, confidence_reason)}"
+    body = (
+        f"VerdictIn60: {title}\n\n"
+        f"{_fallback_body_core(title, case, confidence_label, confidence_reason, sources)}"
+    )
     return f"{body}\n\n{research}\n\nFollow @VerdictIn60 for daily true crime.\n\n{DEFAULT_HASHTAGS}"
 
 
@@ -849,14 +915,14 @@ def _post_draft_needs_fallback(hook: str, body: str) -> str:
 
 
 def _fallback_post_hook_body(case: dict, confidence_label: str = "",
-                             confidence_reason: str = "") -> tuple:
+                             confidence_reason: str = "", sources: list = None) -> tuple:
     """Simple template hook/body a user can edit manually, used when the
     local AI is unavailable or its output doesn't pass validation. Never
     invents facts beyond the case title, its own already-produced timeline/
     outcome, and the verification confidence already computed for it."""
     title = case.get("case_title") or "This case"
     hook = f"{title}: what the record actually shows"
-    return hook, _fallback_body_core(title, case, confidence_label, confidence_reason)
+    return hook, _fallback_body_core(title, case, confidence_label, confidence_reason, sources)
 
 
 def generate_post_draft(result: dict) -> dict:
@@ -906,7 +972,7 @@ def generate_post_draft(result: dict) -> dict:
         print(f"[RESEARCH_HUB] post draft generation failed: {'timed out' if is_timeout_error(e) else e}")
 
     if not ai_used:
-        hook, body = _fallback_post_hook_body(case, confidence_label, confidence_reason)
+        hook, body = _fallback_post_hook_body(case, confidence_label, confidence_reason, sources)
 
     caption = generate_caption(result)
     hashtags = re.findall(r'(?<!\w)#\w+', caption)
