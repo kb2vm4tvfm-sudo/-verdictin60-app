@@ -24,8 +24,9 @@ from verdictin60_core.paths import name_to_filename, filename_to_display
 from verdictin60_core.scheduling import batch_post_datetime, _date_at_post_time
 from verdictin60_core.captions import caption_needs_fallback
 from verdictin60_core.imports import (
-    ytdlp_cmd, parse_docx_queue, download_video_url,
+    ytdlp_cmd, parse_docx_queue, download_video_url, parse_url_list,
 )
+from verdictin60_core.batch_intake import build_batch_item_from_url
 from verdictin60_core.export import ExportError, run_export_pipeline
 from verdictin60_core.publishing import (
     fetch_buffer_scheduled_texts, next_available_date_safe,
@@ -43,7 +44,7 @@ from verdictin60_ui.widgets import (
 from verdictin60_ui.theme import (
     SIDEBAR_BG, SIDEBAR_WIDTH, BORDER, BORDER_LIGHT, INPUT_BG,
     CARD_ALT, CARD_HOVER, TEXT_SECONDARY, TEXT_DIM, TEXT_MUTED, FONT_FAMILY,
-    CARD, SURFACE, SUCCESS, WARNING_BG,
+    CARD, SURFACE, SUCCESS, WARNING, WARNING_BG,
 )
 from verdictin60_ui.components import (
     make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
@@ -439,7 +440,9 @@ class App(tk.Tk):
             filetypes=[("Video files", "*.mp4 *.mov"), ("All files", "*.*")]
         )
         for p in paths:
-            self._batch_add_row(Path(p))
+            self._batch_add_row(
+                Path(p), title_source="detected", caption_source="manual", media_status="file",
+            )
         self._refresh_batch_ui()
 
     def _batch_import_docx(self):
@@ -469,6 +472,9 @@ class App(tk.Tk):
                 case_title=item["title"],
                 caption=item["caption"],
                 final_caption=True,
+                title_source="docx",
+                caption_source="docx",
+                media_status="pending",
             )
         self._batch_status_lbl.config(
             text=f"Loaded {len(rows)} DOCX queue item{'s' if len(rows) != 1 else ''}.",
@@ -553,6 +559,9 @@ class App(tk.Tk):
                 case_title=item["title"],
                 caption=item["caption"],
                 final_caption=True,
+                title_source="docx",
+                caption_source="docx",
+                media_status="pending",
             )
         self._refresh_batch_ui()
 
@@ -566,7 +575,9 @@ class App(tk.Tk):
 
     def _batch_add_row(self, path: Path = None, url: str = "",
                        case_title: str = "", caption: str = "",
-                       final_caption: bool = False):
+                       final_caption: bool = False,
+                       title_source: str = "", caption_source: str = "",
+                       media_status: str = ""):
         idx = len(self._batch_rows)
         bg = CARD_ALT if idx % 2 == 0 else CARD_HOVER
 
@@ -607,19 +618,24 @@ class App(tk.Tk):
         )
         remove_btn.grid(row=0, column=3, padx=(4, 0))
 
-        # Raw caption text area (full width, row 1)
+        # Detection status line (title/caption/media provenance — row 1)
+        meta_lbl = tk.Label(inner, text="", font=(FONT_FAMILY, 8),
+                            fg=TEXT_MUTED, bg=bg, anchor="w")
+        meta_lbl.grid(row=1, column=0, columnspan=4, sticky="w", pady=(2, 0))
+
+        # Raw caption text area (full width, row 2)
         caption_text = tk.Text(inner, height=4, font=(FONT_FAMILY, 9),
                                fg=WHITE, bg=INPUT_BG, insertbackground=WHITE,
                                relief="flat", highlightthickness=1,
                                highlightbackground=BORDER, highlightcolor=CRIMSON,
                                wrap="word", padx=6, pady=6)
         caption_text.insert("1.0", caption or "Paste raw caption here...")
-        caption_text.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(6, 2))
+        caption_text.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(6, 2))
 
-        # Status label (shown after processing)
+        # Status label (ready / needs review / error — row 3)
         status_lbl = tk.Label(inner, text="", font=(FONT_FAMILY, 8),
                               fg=LIGHT_GRAY, bg=bg, anchor="w")
-        status_lbl.grid(row=2, column=0, columnspan=3, sticky="w")
+        status_lbl.grid(row=3, column=0, columnspan=3, sticky="w")
 
         inner.columnconfigure(1, weight=1)
 
@@ -630,16 +646,26 @@ class App(tk.Tk):
             "case_var": case_var,
             "caption_text": caption_text,
             "frame": frame,
+            "meta_lbl": meta_lbl,
             "status_lbl": status_lbl,
             "date_lbl": date_lbl,
             "idx": idx,
+            "title_source": title_source or "manual",
+            "caption_source": caption_source or "manual",
+            "media_status": media_status or ("file" if path else "pending"),
+            "removed": False,
         }
         self._batch_rows.append(row_data)
+        self._refresh_batch_row_meta(row_data)
 
     def _batch_remove_row(self, original_idx):
         # Find by original idx (rows don't shift their stored idx)
         to_remove = next((r for r in self._batch_rows if r["idx"] == original_idx), None)
         if to_remove:
+            # Flagged before destroy() so a background URL-detection callback
+            # still in flight for this row (see _apply_batch_url_detection)
+            # skips touching the now-dead widgets instead of raising.
+            to_remove["removed"] = True
             to_remove["frame"].destroy()
             self._batch_rows.remove(to_remove)
         self._refresh_batch_ui()
@@ -652,6 +678,116 @@ class App(tk.Tk):
             dt = batch_post_datetime(post_time, i)
             local_dt = dt.astimezone()
             row["date_lbl"].config(text=local_dt.strftime("%b %-d"))
+
+    # ── Batch URL paste/import (issue #72) ─────────────────────────────────────
+
+    _TITLE_META_TEXT = {
+        "detected": "Title: detected",
+        "docx": "Title: from DOCX",
+        "manual": "Title: manual",
+        "needs_review": "Title: needs title",
+    }
+    _CAPTION_META_TEXT = {
+        "ai": "Caption: AI draft (review)",
+        "template": "Caption: template draft (review)",
+        "docx": "Caption: from DOCX",
+        "manual": "Caption: manual",
+        "pending": "Caption: detecting…",
+    }
+    _MEDIA_META_TEXT = {
+        "file": "Media: local file",
+        "pending": "Media: pending download",
+        "downloading": "Media: downloading…",
+        "downloaded": "Media: downloaded",
+        "error": "Media: download failed",
+    }
+
+    def _update_batch_row_meta_line(self, row):
+        """Update a batch row's detection-provenance line (title/caption/media
+        source) only — never touches status_lbl, so it's safe to call from
+        _run_batch while a live progress message ("Downloading…", "Export
+        failed: …") is showing there."""
+        title_txt = self._TITLE_META_TEXT.get(row.get("title_source"), "Title: manual")
+        caption_txt = self._CAPTION_META_TEXT.get(row.get("caption_source"), "Caption: manual")
+        media_txt = self._MEDIA_META_TEXT.get(row.get("media_status"), "Media: pending download")
+        row["meta_lbl"].config(text=f"{title_txt}   ·   {caption_txt}   ·   {media_txt}")
+
+    def _refresh_batch_row_meta(self, row):
+        """Update the detection-provenance line plus the overall
+        ready/needs-review/error status_lbl. Only call this before a batch run
+        starts (row add / background detection) — _run_batch manages
+        status_lbl itself once it's underway (see _update_batch_row_meta_line)."""
+        self._update_batch_row_meta_line(row)
+        if row.get("media_status") == "error":
+            row["status_lbl"].config(text="✗  Media download failed", fg=ERROR_RED)
+        elif row.get("caption_source") == "pending":
+            row["status_lbl"].config(text="🔎  Detecting title & caption…", fg=LIGHT_GRAY)
+        elif row.get("title_source") == "needs_review" or row.get("caption_source") == "template":
+            row["status_lbl"].config(text="⚠  Needs review before running", fg=WARNING)
+        else:
+            row["status_lbl"].config(text="✓  Ready", fg=SUCCESS)
+
+    def _batch_add_urls_from_text(self, text: str) -> int:
+        """Parse pasted/imported text for URLs and add one batch row per new
+        URL, then kick off background title/caption detection for them.
+        Returns the number of new rows added (0 if none — e.g. no URLs found
+        or every URL was already queued)."""
+        urls = parse_url_list(text)
+        existing = {row.get("url") for row in self._batch_rows if row.get("url")}
+        new_urls = [u for u in urls if u not in existing]
+        if not new_urls:
+            return 0
+
+        added_rows = []
+        for url in new_urls:
+            self._batch_add_row(
+                path=None, url=url, case_title="", caption="Detecting title & caption…",
+                title_source="needs_review", caption_source="pending", media_status="pending",
+            )
+            added_rows.append(self._batch_rows[-1])
+        self._refresh_batch_ui()
+
+        skipped = len(urls) - len(new_urls)
+        msg = f"Added {len(new_urls)} URL{'s' if len(new_urls) != 1 else ''} — detecting titles/captions…"
+        if skipped:
+            msg += f" ({skipped} duplicate{'s' if skipped != 1 else ''} already queued, skipped)"
+        self._batch_status_lbl.config(text=msg, fg=LIGHT_GRAY)
+
+        threading.Thread(
+            target=self._detect_batch_url_items, args=(added_rows,), daemon=True
+        ).start()
+        return len(new_urls)
+
+    def _detect_batch_url_items(self, rows):
+        """Background worker: probe each newly-added URL row for a title and
+        draft caption, one at a time (mirrors the existing single-worker
+        pattern used by _run_batch). A failure on one URL is caught and
+        reported on just that row — it never stops the rest of the batch."""
+        s = load_settings()
+        for row in rows:
+            if row.get("removed"):
+                continue
+            url = row.get("url", "")
+            try:
+                info = build_batch_item_from_url(url, s)
+            except Exception as e:
+                info = {
+                    "title": "", "title_source": "needs_review",
+                    "caption": f"[NEEDS REVIEW — could not analyze this URL: {e}]",
+                    "caption_source": "template",
+                }
+            self.after(0, lambda r=row, i=info: self._apply_batch_url_detection(r, i))
+
+    def _apply_batch_url_detection(self, row, info):
+        if row.get("removed") or not row["frame"].winfo_exists():
+            return
+        if info.get("title"):
+            row["case_var"].set(info["title"])
+        row["caption_text"].delete("1.0", "end")
+        row["caption_text"].insert("1.0", info.get("caption", ""))
+        row["title_source"] = info.get("title_source", "needs_review")
+        row["caption_source"] = info.get("caption_source", "template")
+        self._refresh_batch_row_meta(row)
 
     def _refresh_batch_ui(self):
         n = len(self._batch_rows)
@@ -747,10 +883,15 @@ class App(tk.Tk):
             )
 
             # Step 1: download URL rows, then run ffmpeg pipeline
+            if source_url and not path:
+                row["media_status"] = "downloading"
+                self.after(0, lambda rw=row: self._update_batch_row_meta_line(rw))
             try:
                 if source_url and not path:
                     download_dir = Path(__file__).parent / "_docx_downloads" / f"{int(time.time())}-{i}"
                     path = download_video_url(source_url, download_dir, s, log_lines)
+                    row["media_status"] = "downloaded"
+                    self.after(0, lambda rw=row: self._update_batch_row_meta_line(rw))
                     set_row_status(f"⏳  Exporting… ({i+1}/{len(rows)})")
                 output_path = run_export_pipeline(
                     path, title, log_lines,
@@ -759,6 +900,9 @@ class App(tk.Tk):
                     )
                 )
             except Exception as e:
+                if source_url and row.get("media_status") == "downloading":
+                    row["media_status"] = "error"
+                    self.after(0, lambda rw=row: self._update_batch_row_meta_line(rw))
                 set_row_status(f"✗  Export failed: {e}", ERROR_RED)
                 continue  # move to next video
 

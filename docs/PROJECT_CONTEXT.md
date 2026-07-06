@@ -6,7 +6,7 @@ VerdictIn60 is a local macOS desktop app for producing and scheduling short true
 
 The app supports a repeatable content workflow through the Batch tab:
 
-1. Queue a source video from a local file, a pasted URL, or a DOCX queue.
+1. Queue a source video from a local file, a pasted/imported list of URLs (with title/caption auto-detected), or a DOCX queue.
 2. Produce a finished reel with the configured assets.
 3. Upload the finished media to Internet Archive.
 4. Schedule the post through Buffer.
@@ -16,7 +16,8 @@ The Recovery tab runs a local health check and repairs common setup problems; th
 
 ## Important Source Files
 
-- `app.py`: main Tkinter application — Batch tab, Recovery tab, settings dialog, DOCX queue import, ffmpeg export, Internet Archive upload, and Buffer scheduling.
+- `app.py`: main Tkinter application — Batch tab, Recovery tab, settings dialog, DOCX queue import, batch URL paste/import wiring, ffmpeg export, Internet Archive upload, and Buffer scheduling.
+- `verdictin60_core/batch_intake.py`: turns a pasted/imported URL into a draft batch item — detects a title and drafts a caption (AI or local template fallback) for Batch's "Paste / Import URLs" flow.
 - `case_library.py`: SQLite case library, Buffer sync, status updates, captions, timelines, and thumbnail generation.
 - `verdictin60_captions.py`: built-in caption library and caption text content.
 - `requirements.txt`: Python packages required by the project.

@@ -5,12 +5,15 @@ VerdictIn60 is a Python desktop application centered around `app.py`, with `case
 ## High-Level Flow
 
 ```text
-Local file / URL / DOCX queue (Batch tab)
+Local file / pasted or imported URL list / DOCX queue (Batch tab)
         |
         v
 Tkinter app in app.py
         |
-        +--> source download through yt-dlp (for queued URL rows)
+        +--> URL title/caption detection through verdictin60_core/batch_intake.py
+        |       (yt-dlp metadata probe, page-title fetch, AI caption draft,
+        |        template fallback — runs in the background per URL)
+        +--> source download through yt-dlp (for queued URL rows, at run time)
         +--> video processing through ffmpeg and assets/
         +--> upload through Internet Archive
         +--> scheduling through Buffer
@@ -71,7 +74,7 @@ Long-running video work should remain off the Tkinter main thread.
 
 ## AI/Provider Settings
 
-Settings still exposes AI speed mode and provider configuration (`verdictin60_core/ai.py`), and Recovery's health check still verifies that the configured Ollama models are installed. No tab currently calls the AI caption-generation pipeline directly — Batch captions come from `reformat_caption` — but the provider settings and safety/cost guard (`verdictin60_core/provider_guard.py`) remain in place for Recovery diagnostics and future use.
+Settings exposes AI speed mode and provider configuration (`verdictin60_core/ai.py`), and Recovery's health check verifies that the configured Ollama models are installed. Batch's "Paste / Import URLs" flow (`verdictin60_core/batch_intake.py`) is the first caller of the AI caption pipeline: it drafts a short caption body per pasted URL through `ai_generate`/`ai_task_ready`, which already routes through the safety/cost guard (`verdictin60_core/provider_guard.py`), and falls back to a local template (marked "needs review") whenever AI is unavailable, disabled, or fails. The draft body still passes through the existing `reformat_caption` step in `app.py` at run time to get its hashtags/CTA, same as a manually-pasted caption.
 
 ## Upload And Scheduling
 

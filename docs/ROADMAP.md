@@ -49,6 +49,14 @@ Built a "Research Hub" tab (issue #52) with AI case identification, budgeted sou
 - Removed the now-dead UI modules (`url_import_tab.py`, `library_tab.py`, `research_tab.py`, `single_export_tab.py`) and the `LibraryTab`/`CaseDetailDialog` UI classes from `case_library.py`; kept the shared `CaseLibrary` data layer, `verdictin60_core/export.py`, and `verdictin60_core/imports.py` since Batch still depends on them.
 - Removed `verdictin60_core/research.py` and `research_hub.py`, which had no callers left after Research Hub and URL Import were removed.
 
+## Phase 10: Batch URL Paste/Import (issue #72)
+
+- Added a "Paste / Import URLs" dialog inside the existing Batch tab (no new nav tab) so the user can paste a list of URLs or import a plain `.txt`/`.csv` list instead of hand-building a DOCX row per case.
+- Added `verdictin60_core/imports.py` helpers (`parse_url_list`, `probe_url_metadata`, `fetch_page_title`, `title_from_url`) and a new `verdictin60_core/batch_intake.py` that combines them with the existing AI provider settings/safety guard (`verdictin60_core/ai.py`, `verdictin60_core/provider_guard.py`) to draft a title and caption per pasted URL, falling back to a local template (marked "needs review") when AI is unavailable/disabled/fails.
+- Each batch row now shows title/caption/media detection status and an overall ready/needs-review/error indicator; one failed URL (download or detection) never stops the rest of the batch and stays in the queue with a clear reason.
+- Media is still only downloaded when the batch actually runs (unchanged) — pasting/importing a large URL list doesn't trigger any downloads up front.
+- Existing DOCX import, Buffer scheduling, Recovery, and Settings are unchanged.
+
 ## Nice-To-Have Ideas
 
 - A local dashboard showing service health.
