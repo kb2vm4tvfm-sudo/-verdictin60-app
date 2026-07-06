@@ -88,17 +88,17 @@ def scan_recovery_health() -> list:
             issues.append(_recovery_issue(
                 "Downloader", "Attention Required", "warning",
                 "The video downloader did not start correctly.",
-                "The app needs yt-dlp to import reels from links.",
-                "Show the install option in URL Import.",
-                "show_ytdlp_install",
+                "The app needs yt-dlp to download Batch videos from links.",
+                "Open Settings and install yt-dlp manually if needed.",
+                "open_settings",
             ))
     except Exception:
         issues.append(_recovery_issue(
             "Downloader", "Attention Required", "warning",
             "The video downloader is missing or unavailable.",
-            "The app needs yt-dlp before it can download reels from URLs.",
-            "Show the install option in URL Import.",
-            "show_ytdlp_install",
+            "The app needs yt-dlp before Batch can download reels from URLs.",
+            "Open Settings and install yt-dlp manually if needed.",
+            "open_settings",
         ))
 
     # FFmpeg
@@ -152,8 +152,8 @@ def scan_recovery_health() -> list:
                 "Caption Generator", "Attention Required", "warning",
                 "One or more local AI models are missing.",
                 "Missing model(s): " + ", ".join(missing) + ".",
-                "Open URL Import and use the Ollama install/model setup option.",
-                "open_url_import",
+                "Open Settings and review your AI/provider setup.",
+                "open_settings",
             ))
         else:
             issues.append(_recovery_issue(
@@ -166,8 +166,8 @@ def scan_recovery_health() -> list:
             "Caption Generator", "Attention Required", "warning",
             "Local AI is not reachable.",
             "Ollama may not be running, so automatic captions may not generate.",
-            "Open URL Import and use the Ollama setup option.",
-            "open_url_import",
+            "Open Settings and review your AI/provider setup.",
+            "open_settings",
         ))
 
     # Internet Archive

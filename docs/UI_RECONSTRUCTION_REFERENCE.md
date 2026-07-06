@@ -121,15 +121,21 @@ Mapping Base44's example screens to VerdictIn60's actual tabs. Screen names belo
 preserved from the Base44 concept for traceability; VerdictIn60's real tab names are in
 the right column.
 
+As of the Phase 9 simplification (issue #70), VerdictIn60 has only three main tabs —
+Batch, Recovery, and Settings. The Library/Saved Cases, URL Import, Research Hub, and
+Single Export tabs (and their `url_import_tab.py`/`library_tab.py`/`research_tab.py`/
+`single_export_tab.py` modules) were removed, so rows below that referenced them are
+kept only as historical Base44-concept mapping notes, not as pointers to real files.
+
 | Base44 screen | Purpose in the concept | Closest VerdictIn60 tab | Guidance |
 |---|---|---|---|
 | Dashboard | Stat tiles (cases found, verified, captions generated, etc.) + recent activity feed | No direct 1:1 tab today | If a dashboard/overview tab is ever added, reuse `make_metric_card()` for tiles and a `make_card()` list (like `make_source_list()`'s row style) for an activity feed — do not introduce it speculatively |
-| AI Case Hunter | Scan action, filters, a grid of case cards with viral/confidence scores and quick actions (Sources/Verify/Caption/Save) | Closest in spirit to case discovery/import flows across `url_import_tab.py` and `case_library.py` | Card-grid-with-quick-actions is a reasonable future direction for a "discover cases" surface, but VerdictIn60 does not currently do automated trending-case discovery — do not imply that functionality exists |
-| URL Import | URL field + import button, step-by-step loading state, import history list | `url_import_tab.py` | Already the real equivalent; keep its existing loading/progress treatment (see Animation section) rather than replacing it wholesale |
-| Caption Generator | Two-pane: caption editor with counters/toolbar on the left, tabbed verification/sources/AI-summary panel on the right | Caption review/edit surfaces reachable from `single_export_tab.py` / `batch_tab.py` and caption data in `verdictin60_captions.py` | The two-pane editor+verification-tabs layout is a good long-term shape for a caption review screen; the specific tab set (Verification/Sources/AI Summary) maps to VerdictIn60's existing source/confidence concepts in `verdictin60_core/research.py` |
-| Verification | Summary tiles (verified/needs review/not verified counts) + filterable table of claims with confidence bars | Verification concepts live in `verdictin60_core/research.py`; surfaced today via `make_confidence_badge()`/`make_source_list()` inline in dialogs rather than a dedicated tab | A dedicated verification tab, if built, should reuse `make_metric_card()` for the summary tiles and the progress-bar pattern above for per-claim confidence |
-| Saved Cases | Grid/list toggle, search, favoriting, per-case status chip | `library_tab.py` (`case_library.LibraryTab`) | This is the real equivalent; grid/list toggle and favoriting are enhancement ideas, not requirements |
-| Export | Export-format cards (DOCX/PDF/Clipboard/Buffer-ready) + recent exports list | Export/publish flow in `verdictin60_core/export.py`, `verdictin60_core/publishing.py`, `batch_tab.py` | VerdictIn60's real export targets are ffmpeg-rendered reels, Internet Archive, and Buffer — not DOCX/PDF. Only the *card-grid-of-options* + *recent-activity-list* layout idea transfers; the specific export types must stay VerdictIn60's own |
+| AI Case Hunter | Scan action, filters, a grid of case cards with viral/confidence scores and quick actions (Sources/Verify/Caption/Save) | No longer applicable — removed with URL Import/Research Hub (Phase 9) | VerdictIn60 does not currently do automated trending-case discovery or case-hunting UI — do not imply that functionality exists |
+| URL Import | URL field + import button, step-by-step loading state, import history list | Removed (Phase 9) — Batch can still queue a video by URL via the DOCX queue | If a dedicated URL-import surface is ever rebuilt, keep the loading/progress treatment described in the Animation section |
+| Caption Generator | Two-pane: caption editor with counters/toolbar on the left, tabbed verification/sources/AI-summary panel on the right | Caption review is now limited to Batch's plain caption field (`batch_tab.py`); the AI-verification pipeline was removed | The two-pane editor+verification-tabs layout is a good long-term shape if a caption review screen is rebuilt, but VerdictIn60 does not currently run source verification |
+| Verification | Summary tiles (verified/needs review/not verified counts) + filterable table of claims with confidence bars | Removed (Phase 9) — `verdictin60_core/research.py` no longer exists | Not currently applicable; `make_confidence_badge()`/`make_source_list()` remain in `verdictin60_ui/components.py` if this is rebuilt |
+| Saved Cases | Grid/list toggle, search, favoriting, per-case status chip | Removed (Phase 9) — `case_library.py` still stores case data for Batch, but its `LibraryTab`/`CaseDetailDialog` UI classes were removed | Not currently applicable |
+| Export | Export-format cards (DOCX/PDF/Clipboard/Buffer-ready) + recent exports list | Export/publish flow in `verdictin60_core/export.py`, `verdictin60_core/publishing.py`, `batch_tab.py` (Single Export tab was removed in Phase 9) | VerdictIn60's real export targets are ffmpeg-rendered reels, Internet Archive, and Buffer — not DOCX/PDF. Only the *card-grid-of-options* + *recent-activity-list* layout idea transfers; the specific export types must stay VerdictIn60's own |
 | Settings | Segmented tabs: General/Appearance/AI/Models/Verification/Exports/Advanced, each a list of label+control rows | `settings_tab.py` | Already closely matches this shape (see `SETTINGS_TABS`); keep using `make_segmented_tabs()` and a consistent label+description+control row for any new setting |
 
 Screens that are **not applicable**: Login/Register/Forgot-Password/Reset-Password
@@ -142,12 +148,11 @@ app with no login flow.
   with a short status label ("Scanning…", "Importing…", "Verifying…"). VerdictIn60's
   `make_loading_state()` already implements the pulsing-dot + message version via
   `.after()`; prefer extending that helper over hand-rolling a new animation per tab.
-- **Multi-step progress:** when an operation has discrete steps (e.g. "Fetching
-  metadata" → "Extracting thumbnail" → "Identifying case"), show them as a short
-  vertical list where completed steps get a check and the current step gets a spinner.
-  This is a reasonable pattern for `url_import_tab.py`'s import flow if it's ever
-  broken into visible steps; keep it honest — only show steps the app actually
-  performs, in the order it actually performs them.
+- **Multi-step progress:** when an operation has discrete steps (e.g. "Downloading" →
+  "Exporting" → "Uploading" → "Scheduling", as Batch already shows per row), show them
+  as a short vertical list where completed steps get a check and the current step gets
+  a spinner; keep it honest — only show steps the app actually performs, in the order
+  it actually performs them.
 - **Success/completion:** swap the in-progress indicator for a static checkmark badge
   in `SUCCESS`/`SUCCESS_BG`, not a new color.
 - **Error state:** a bordered banner with a warning glyph, bold short title, muted

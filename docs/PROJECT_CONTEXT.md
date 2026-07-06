@@ -1,23 +1,23 @@
 # VerdictIn60 Project Context
 
-VerdictIn60 is a local macOS desktop app for producing and scheduling short true-crime reels. It is built primarily in Python with Tkinter for the UI. The app helps import video sources, prepare finished vertical reels, generate or review captions, upload media, schedule posts, and keep a local case library.
+VerdictIn60 is a local macOS desktop app for producing and scheduling short true-crime reels. It is built primarily in Python with Tkinter for the UI. The app is scoped to three tabs — Batch, Recovery, and Settings — and helps batch-process video sources, prepare finished vertical reels, upload media, schedule posts, and keep a local case library.
 
 ## Core Purpose
 
-The app supports a repeatable content workflow:
+The app supports a repeatable content workflow through the Batch tab:
 
-1. Import a source video manually, from a URL, or from a DOCX queue.
-2. Identify or enter the true-crime case title.
-3. Generate, review, or paste an Instagram-ready caption.
-4. Produce a finished reel with the configured assets.
-5. Upload the finished media to Internet Archive.
-6. Schedule the post through Buffer.
-7. Track the case in a local SQLite-backed library.
+1. Queue a source video from a local file, a pasted URL, or a DOCX queue.
+2. Produce a finished reel with the configured assets.
+3. Upload the finished media to Internet Archive.
+4. Schedule the post through Buffer.
+5. Track the case in a local SQLite-backed library.
+
+The Recovery tab runs a local health check and repairs common setup problems; the Settings dialog manages AI/provider settings, Buffer settings, and the safety/cost guard.
 
 ## Important Source Files
 
-- `app.py`: main Tkinter application, settings dialog, URL import flow, DOCX queue import, caption generation/review, ffmpeg export, Internet Archive upload, Buffer scheduling, and recovery assistant.
-- `case_library.py`: SQLite case library, Buffer sync, case cards, detail dialog, status updates, captions, timelines, and thumbnail generation.
+- `app.py`: main Tkinter application — Batch tab, Recovery tab, settings dialog, DOCX queue import, ffmpeg export, Internet Archive upload, and Buffer scheduling.
+- `case_library.py`: SQLite case library, Buffer sync, status updates, captions, timelines, and thumbnail generation.
 - `verdictin60_captions.py`: built-in caption library and caption text content.
 - `requirements.txt`: Python packages required by the project.
 - `assets/`: required media assets such as logo, voiceover, and CTA end card.
@@ -45,13 +45,10 @@ The app relies on these local tools and external services:
 - Python 3.
 - Tkinter for the desktop UI.
 - ffmpeg and ffprobe for video processing.
-- yt-dlp for URL/video downloads.
-- Ollama for local AI model calls.
-- Playwright and/or browser access for rendered web pages and source fetching.
+- yt-dlp for URL/video downloads (queued in Batch).
+- Ollama for local AI model calls (configured in Settings; checked by Recovery).
 - Internet Archive S3-style upload API for public video hosting.
 - Buffer GraphQL API for scheduling Instagram posts.
-- Meta/Instagram APIs for account connection and media metrics.
-- Wikipedia, DuckDuckGo, CourtListener, and source pages for verification research.
 
 ## Current GitHub Upload Scope
 
