@@ -44,8 +44,9 @@ Do not make changes that break this flow without an explicit migration plan.
   - Check `provider_guard.is_provider_disabled("<provider>")` first and skip the call
     (falling back to local/non-AI behavior) if it returns `True`.
   - On failure, call `provider_guard.report_failure("<provider>", status_code=...)` (or
-    with a sanitized message) so quota/billing/rate-limit/auth-shaped failures disable
-    the provider instead of being retried.
+    with a sanitized message) so quota/billing/rate-limit/auth/timeout-shaped failures
+    disable the provider instead of being retried (a bare timeout gets a short cooldown,
+    not the long quota/auth disable — see `TIMEOUT_COOLDOWN_SECONDS`).
   - Never pass an API key, token, cookie, or Authorization header into
     `report_failure` — only a status code or an already-sanitized message.
 - Do not add retry loops around a paid/quota-limited provider call. One attempt, then
