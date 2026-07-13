@@ -27,6 +27,7 @@ from verdictin60_core.imports import (
 )
 from verdictin60_core.metadata import fetch_url_metadata, probe_local_video
 from verdictin60_core.caption_pipeline import generate_case_caption, READY
+from verdictin60_core.batch_items import parse_pasted_urls
 from verdictin60_core.export import ExportError, run_export_pipeline
 from verdictin60_core.publishing import (
     next_available_date_safe,
@@ -49,7 +50,7 @@ from verdictin60_ui.theme import (
 from verdictin60_ui.components import (
     make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
     stop_loading_state, make_error_banner, make_source_list, make_card, card_body,
-    make_confidence_badge, STATUS_STYLES,
+    make_confidence_badge, make_toplevel_shell, STATUS_STYLES,
 )
 from verdictin60_ui.settings_tab import SettingsDialog
 from verdictin60_ui.batch_tab import build_batch_tab
@@ -465,6 +466,19 @@ class App(tk.Tk):
         text, style = self._BADGE_DISPLAY.get(proc_status, self._BADGE_DISPLAY["queued"])
         fg, bg = STATUS_STYLES.get(style, STATUS_STYLES["neutral"])
         self.after(0, lambda: row["badge_lbl"].config(text=f" {text} ", fg=fg, bg=bg))
+        self.after(0, lambda: self._update_row_review_widgets(row))
+
+    def _update_row_review_widgets(self, row: dict):
+        """Reflect proc_status/review_reason on the row's Review button and
+        reason line — a Needs Review row shows why, and offers a Review
+        button to open/edit/approve it (issue #79)."""
+        if row["proc_status"] == "needs_review":
+            reason = row.get("review_reason") or "manual verification recommended"
+            row["reason_lbl"].config(text=f"⚠  Needs review — {reason}")
+            row["review_btn"].config(text=" REVIEW ▸ ")
+        else:
+            row["reason_lbl"].config(text="")
+            row["review_btn"].config(text=" EDIT ")
 
     def _process_batch_new_item(self, row: dict):
         """Research + generate a VerdictIn60-style caption for one newly-added
@@ -491,7 +505,7 @@ class App(tk.Tk):
                 self.after(0, lambda t=title: row["case_var"].set(t))
 
             self._set_row_status(row, "✍️  Writing caption…")
-            caption, status = generate_case_caption(title, metadata, url, log_lines)
+            caption, status, review_reason = generate_case_caption(title, metadata, url, log_lines)
 
             def _apply(c=caption):
                 row["caption_text"].delete("1.0", "end")
@@ -499,11 +513,13 @@ class App(tk.Tk):
             self.after(0, _apply)
 
             if status == READY:
+                row["review_reason"] = ""
                 self._set_row_status(row, "✓  Caption ready", SUCCESS)
                 self._set_row_badge(row, "ready")
             else:
+                row["review_reason"] = review_reason
                 self._set_row_status(
-                    row, "⚠  Needs review — verify sources before scheduling", WARNING
+                    row, f"⚠  Needs review — {review_reason}. Click Review to fix.", WARNING
                 )
                 self._set_row_badge(row, "needs_review")
         except Exception as e:
@@ -573,6 +589,22 @@ class App(tk.Tk):
                               fg=LIGHT_GRAY, bg=bg, anchor="w")
         status_lbl.grid(row=2, column=0, columnspan=4, sticky="w")
 
+        # Review button — opens the row so a Needs Review item can be
+        # manually completed and approved for scheduling (issue #79).
+        review_btn = _make_lbtn(
+            inner, " EDIT ", lambda i=idx: self._open_batch_row_review(i),
+            bg=bg, fg=TEXT_DIM, hover_bg=bg, hover_fg=WHITE, normal_fg=TEXT_DIM,
+            font=(FONT_FAMILY, 8, "bold"), pady=2, padx=6
+        )
+        review_btn.grid(row=2, column=4, sticky="e")
+
+        # Reason line — why this row needs review (metadata unavailable,
+        # source verification pending, AI unavailable, Instagram blocked
+        # metadata, etc.). Empty/hidden once the row is ready or approved.
+        reason_lbl = tk.Label(inner, text="", font=(FONT_FAMILY, 8, "italic"),
+                              fg=WARNING, bg=bg, anchor="w", wraplength=520, justify="left")
+        reason_lbl.grid(row=3, column=0, columnspan=5, sticky="w")
+
         inner.columnconfigure(1, weight=1)
 
         row_data = {
@@ -585,6 +617,11 @@ class App(tk.Tk):
             "status_lbl": status_lbl,
             "badge_lbl": badge_lbl,
             "date_lbl": date_lbl,
+            "review_btn": review_btn,
+            "reason_lbl": reason_lbl,
+            "review_reason": "",
+            "source_links": [url] if url else [],
+            "notes": "",
             "proc_status": "ready" if caption else "queued",
             "idx": idx,
         }
@@ -594,12 +631,119 @@ class App(tk.Tk):
 
     def _batch_remove_row(self, original_idx):
         # Find by original idx (rows don't shift their stored idx)
-        to_remove = next((r for r in self._batch_rows if r["idx"] == original_idx), None)
+        to_remove = self._batch_row_by_idx(original_idx)
         if to_remove:
             to_remove["frame"].destroy()
             self._batch_rows.remove(to_remove)
         self._refresh_batch_ui()
         self._refresh_batch_dates()
+
+    def _batch_row_by_idx(self, original_idx):
+        # Rows don't shift their stored idx when others are removed/reordered.
+        return next((r for r in self._batch_rows if r["idx"] == original_idx), None)
+
+    def _open_batch_row_review(self, original_idx):
+        """Open/edit a batch row (issue #79): title, caption, source links
+        and notes/facts are all editable here, with a clear "Approve for
+        Scheduling" action once a Needs Review row has been manually
+        completed. Never auto-publishes — approval only flips the row's
+        status; Schedule All still has to be run separately."""
+        row = self._batch_row_by_idx(original_idx)
+        if row is None:
+            return
+        needs_review = row["proc_status"] == "needs_review"
+        win, body = make_toplevel_shell(
+            self, "REVIEW VIDEO" if needs_review else "EDIT VIDEO", width=620, height=660
+        )
+
+        if needs_review:
+            reason = row.get("review_reason") or "manual verification recommended"
+            reason_card = make_card(body, padx=12, pady=10, bg=WARNING_BG, border=WARNING, hover=False)
+            reason_card.pack(fill="x", pady=(0, 12))
+            tk.Label(
+                card_body(reason_card), text=f"⚠  Needs review — {reason}",
+                font=(FONT_FAMILY, 10, "bold"), fg=WARNING, bg=WARNING_BG,
+                wraplength=560, justify="left", anchor="w",
+            ).pack(fill="x")
+
+        tk.Label(body, text="TITLE", font=(FONT_FAMILY, 9, "bold"),
+                 fg=TEXT_SECONDARY, bg=BG, anchor="w").pack(fill="x", pady=(0, 4))
+        tk.Entry(
+            body, textvariable=row["case_var"], font=(FONT_FAMILY, 10), fg=WHITE, bg=INPUT_BG,
+            insertbackground=WHITE, relief="flat", highlightthickness=1,
+            highlightbackground=BORDER, highlightcolor=CRIMSON,
+        ).pack(fill="x", pady=(0, 10))
+
+        tk.Label(body, text="CAPTION  (generated fallback shown below — edit as needed)",
+                 font=(FONT_FAMILY, 9, "bold"), fg=TEXT_SECONDARY, bg=BG, anchor="w"
+                 ).pack(fill="x", pady=(0, 4))
+        caption_box = tk.Text(
+            body, height=8, font=(FONT_FAMILY, 10), fg=WHITE, bg=INPUT_BG, insertbackground=WHITE,
+            relief="flat", highlightthickness=1, highlightbackground=BORDER, highlightcolor=CRIMSON,
+            wrap="word", padx=8, pady=8,
+        )
+        caption_box.insert("1.0", row["caption_text"].get("1.0", "end").strip())
+        caption_box.pack(fill="both", expand=True, pady=(0, 10))
+
+        tk.Label(body, text="SOURCE LINKS  (one per line)", font=(FONT_FAMILY, 9, "bold"),
+                 fg=TEXT_SECONDARY, bg=BG, anchor="w").pack(fill="x", pady=(0, 4))
+        links_box = tk.Text(
+            body, height=3, font=(FONT_FAMILY, 9), fg=WHITE, bg=INPUT_BG, insertbackground=WHITE,
+            relief="flat", highlightthickness=1, highlightbackground=BORDER, highlightcolor=CRIMSON,
+            wrap="word", padx=8, pady=6,
+        )
+        existing_links = row.get("source_links", [])
+        links_box.insert("1.0", "\n".join(existing_links))
+        links_box.pack(fill="x", pady=(0, 10))
+
+        tk.Label(body, text="NOTES / FACTS", font=(FONT_FAMILY, 9, "bold"),
+                 fg=TEXT_SECONDARY, bg=BG, anchor="w").pack(fill="x", pady=(0, 4))
+        notes_box = tk.Text(
+            body, height=4, font=(FONT_FAMILY, 9), fg=WHITE, bg=INPUT_BG, insertbackground=WHITE,
+            relief="flat", highlightthickness=1, highlightbackground=BORDER, highlightcolor=CRIMSON,
+            wrap="word", padx=8, pady=6,
+        )
+        notes_box.insert("1.0", row.get("notes", ""))
+        notes_box.pack(fill="x", pady=(0, 8))
+
+        err_lbl = tk.Label(body, text="", font=(FONT_FAMILY, 9), fg=ERROR_RED, bg=BG,
+                           anchor="w", wraplength=560, justify="left")
+        err_lbl.pack(fill="x", pady=(0, 6))
+
+        def _persist_edits():
+            new_caption = caption_box.get("1.0", "end").strip()
+            row["caption_text"].delete("1.0", "end")
+            row["caption_text"].insert("1.0", new_caption)
+            row["source_links"] = parse_pasted_urls(links_box.get("1.0", "end"))
+            row["notes"] = notes_box.get("1.0", "end").strip()
+            return new_caption
+
+        def _save():
+            _persist_edits()
+            win.destroy()
+
+        def _approve():
+            new_caption = _persist_edits()
+            if not row["case_var"].get().strip() or not new_caption:
+                err_lbl.config(text="Title and caption are required before approving.")
+                return
+            row["review_reason"] = ""
+            self._set_row_badge(row, "ready")
+            self._set_row_status(row, "✓  Approved for scheduling", SUCCESS)
+            win.destroy()
+
+        btn_row = tk.Frame(body, bg=BG)
+        btn_row.pack(fill="x", pady=(4, 0))
+        _make_lbtn(
+            btn_row, "SAVE CHANGES", _save, bg=INPUT_BG, fg=WHITE, hover_bg=BORDER,
+            font=(FONT_FAMILY, 10, "bold"), pady=10, padx=14,
+        ).pack(side="left", padx=(0, 8))
+        _make_lbtn(
+            btn_row, "✓  APPROVE FOR SCHEDULING", _approve, bg=CRIMSON, fg=WHITE, hover_bg=CRIMSON_HOT,
+            font=(FONT_FAMILY, 10, "bold"), pady=10, padx=14,
+        ).pack(side="left", fill="x", expand=True)
+
+        return win
 
     def _refresh_batch_dates(self):
         s = load_settings()
@@ -636,6 +780,16 @@ class App(tk.Tk):
             self._batch_status_lbl.config(
                 text="⚠  Still researching & writing captions — wait for every video to finish "
                      "before scheduling.",
+                fg=CRIMSON
+            )
+            return
+        # Needs Review rows are never auto-published — each one has to be
+        # opened, fixed, and approved before Schedule All will run (issue #79).
+        needs_review_count = sum(1 for row in self._batch_rows if row.get("proc_status") == "needs_review")
+        if needs_review_count:
+            self._batch_status_lbl.config(
+                text=f"⚠  {needs_review_count} video{'s' if needs_review_count != 1 else ''} still "
+                     f"need manual review — open the row and click Approve for Scheduling first.",
                 fg=CRIMSON
             )
             return

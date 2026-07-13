@@ -20,9 +20,35 @@ from verdictin60_core.caption_style import (
 READY = "ready"
 NEEDS_REVIEW = "needs_review"
 
+# Plain-English categories surfaced on a Needs Review batch row (issue #79) —
+# broader buckets than the internal caption_needs_fallback() reason strings,
+# so a non-technical user can tell at a glance why a row needs manual work.
+REASON_AI_UNAVAILABLE = "AI unavailable"
+REASON_METADATA_UNAVAILABLE = "metadata unavailable"
+REASON_INSTAGRAM_BLOCKED = "Instagram blocked metadata"
+REASON_SOURCE_PENDING = "source verification pending"
+
+
+def _classify_review_reason(source_url: str, metadata: dict, ai_ready: bool) -> str:
+    """Map the low-level cause of a NEEDS_REVIEW flag to one of the review
+    reason categories shown on the batch row."""
+    has_metadata = bool(
+        metadata.get("description") or metadata.get("title") or metadata.get("page_title")
+    )
+    if not has_metadata and "instagram.com" in (source_url or "").lower():
+        return REASON_INSTAGRAM_BLOCKED
+    if not ai_ready:
+        return REASON_AI_UNAVAILABLE
+    if not has_metadata:
+        return REASON_METADATA_UNAVAILABLE
+    return REASON_SOURCE_PENDING
+
 
 def generate_case_caption(title: str, metadata: dict, source_url: str, log_lines: list) -> tuple:
-    """Return (caption, status) where status is READY or NEEDS_REVIEW.
+    """Return (caption, status, review_reason) where status is READY or
+    NEEDS_REVIEW, and review_reason is a short plain-English category (e.g.
+    "AI unavailable", "metadata unavailable") explaining why — empty when
+    status is READY.
 
     Tries the configured AI provider (Ollama by default, NVIDIA NIM if the
     user has enabled Cloud fallback/only — see ai_task_ready/ai_generate) and
@@ -32,14 +58,16 @@ def generate_case_caption(title: str, metadata: dict, source_url: str, log_lines
     """
     metadata = metadata or {}
     caption = ""
+    ai_ready = ai_task_ready("caption")
 
-    if ai_task_ready("caption"):
+    if ai_ready:
         try:
             prompt = build_caption_prompt(title, metadata, source_url)
             caption = ai_generate(prompt, task="caption", num_predict=1500)
         except Exception as e:
             log_lines.append(f"AI caption generation failed: {e}")
             caption = ""
+            ai_ready = False  # a failed call is treated the same as "no AI available"
     else:
         log_lines.append(
             "AI caption task not ready (no local model installed / no cloud "
@@ -59,4 +87,6 @@ def generate_case_caption(title: str, metadata: dict, source_url: str, log_lines
         log_lines.append("Very little source metadata available - flagging AI caption for manual review")
 
     caption = enforce_caption_constraints(caption, source_url)
-    return caption, (NEEDS_REVIEW if needs_review else READY)
+
+    review_reason = _classify_review_reason(source_url, metadata, ai_ready) if needs_review else ""
+    return caption, (NEEDS_REVIEW if needs_review else READY), review_reason
