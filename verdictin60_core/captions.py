@@ -6,6 +6,9 @@
 """
 import re
 
+# Buffer-compatible ceiling for the official VerdictIn60 caption style (issue #77).
+MAX_CAPTION_LENGTH = 2200
+
 
 def caption_needs_fallback(caption: str) -> str:
     """Return a reason when an AI caption is clearly incomplete or unusable."""
@@ -15,6 +18,8 @@ def caption_needs_fallback(caption: str) -> str:
         return "empty"
     if len(text) < 280:
         return "too short"
+    if len(text) > MAX_CAPTION_LENGTH:
+        return f"too long ({len(text)} chars)"
     if "Research & Verification" not in text:
         return "missing Research & Verification"
     hashtag_count = len(re.findall(r'(?<!\w)#\w+', text))

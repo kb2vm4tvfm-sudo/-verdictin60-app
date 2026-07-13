@@ -8,7 +8,6 @@ os.environ.setdefault(
 )
 
 import tkinter as tk
-from tkinter import filedialog
 import subprocess
 import threading
 import shutil
@@ -24,11 +23,13 @@ from verdictin60_core.paths import name_to_filename, filename_to_display
 from verdictin60_core.scheduling import batch_post_datetime, _date_at_post_time
 from verdictin60_core.captions import caption_needs_fallback
 from verdictin60_core.imports import (
-    ytdlp_cmd, parse_docx_queue, download_video_url,
+    ytdlp_cmd, download_video_url,
 )
+from verdictin60_core.metadata import fetch_url_metadata, probe_local_video
+from verdictin60_core.caption_pipeline import generate_case_caption, READY
 from verdictin60_core.export import ExportError, run_export_pipeline
 from verdictin60_core.publishing import (
-    fetch_buffer_scheduled_texts, next_available_date_safe,
+    next_available_date_safe,
     upload_video, schedule_to_buffer, buffer_video_not_ready,
     wait_for_public_video_url,
 )
@@ -43,12 +44,12 @@ from verdictin60_ui.widgets import (
 from verdictin60_ui.theme import (
     SIDEBAR_BG, SIDEBAR_WIDTH, BORDER, BORDER_LIGHT, INPUT_BG,
     CARD_ALT, CARD_HOVER, TEXT_SECONDARY, TEXT_DIM, TEXT_MUTED, FONT_FAMILY,
-    CARD, SURFACE, SUCCESS, WARNING_BG,
+    CARD, SURFACE, SUCCESS, WARNING, WARNING_BG,
 )
 from verdictin60_ui.components import (
     make_sidebar_button, set_sidebar_active, set_sidebar_inactive, make_badge, make_top_bar,
     stop_loading_state, make_error_banner, make_source_list, make_card, card_body,
-    make_confidence_badge,
+    make_confidence_badge, STATUS_STYLES,
 )
 from verdictin60_ui.settings_tab import SettingsDialog
 from verdictin60_ui.batch_tab import build_batch_tab
@@ -61,7 +62,6 @@ VOICEOVER_PATH= ASSETS_DIR / "voiceover.mp3"
 LOGO_PATH     = ASSETS_DIR / "logo.png"
 TEMP_CTA      = Path(__file__).parent / "cta-with-voice.mp4"
 LOG_PATH      = Path(__file__).parent / "export-log.txt"
-IMPORT_DOCX_PATH = Path(__file__).parent / "VerdictIn60_Import_With_Captions.docx"
 
 FFMPEG      = shutil.which("ffmpeg")  or "/opt/homebrew/bin/ffmpeg"
 FFPROBE     = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
@@ -433,140 +433,86 @@ class App(tk.Tk):
 
     # ── Batch row management ──────────────────────────────────────────────────
 
-    def _batch_add_files(self):
-        paths = filedialog.askopenfilenames(
-            title="Select case videos",
-            filetypes=[("Video files", "*.mp4 *.mov"), ("All files", "*.*")]
-        )
+    def _batch_add_items(self, urls: list, paths: list):
+        """The Add Videos workflow's single entry point: one batch item per
+        URL/local file, each researched and captioned independently in the
+        background so one failure doesn't hold up (or stop) the others."""
+        new_rows = []
         for p in paths:
-            self._batch_add_row(Path(p))
+            self._batch_add_row(path=Path(p))
+            new_rows.append(self._batch_rows[-1])
+        for u in urls:
+            self._batch_add_row(url=u)
+            new_rows.append(self._batch_rows[-1])
         self._refresh_batch_ui()
+        for row in new_rows:
+            threading.Thread(target=self._process_batch_new_item, args=(row,), daemon=True).start()
 
-    def _batch_import_docx(self):
-        path = filedialog.askopenfilename(
-            title="Select DOCX queue",
-            filetypes=[("Word document", "*.docx"), ("All files", "*.*")]
-        )
-        if not path:
-            return
+    def _set_row_status(self, row: dict, msg: str, color=LIGHT_GRAY):
+        self.after(0, lambda: row["status_lbl"].config(text=msg, fg=color))
+
+    # proc_status (the gating state _start_batch checks) -> (badge text, STATUS_STYLES key)
+    _BADGE_DISPLAY = {
+        "queued":       ("QUEUED", "neutral"),
+        "working":      ("WORKING", "info"),
+        "ready":        ("READY", "success"),
+        "needs_review": ("NEEDS REVIEW", "warning"),
+        "error":        ("ERROR", "error"),
+    }
+
+    def _set_row_badge(self, row: dict, proc_status: str):
+        row["proc_status"] = proc_status
+        text, style = self._BADGE_DISPLAY.get(proc_status, self._BADGE_DISPLAY["queued"])
+        fg, bg = STATUS_STYLES.get(style, STATUS_STYLES["neutral"])
+        self.after(0, lambda: row["badge_lbl"].config(text=f" {text} ", fg=fg, bg=bg))
+
+    def _process_batch_new_item(self, row: dict):
+        """Research + generate a VerdictIn60-style caption for one newly-added
+        batch row. Runs off the UI thread; any failure here is caught and
+        surfaced on the row itself rather than raised, so it can't take down
+        the rest of the batch."""
+        path = row.get("path")
+        url = row.get("url", "")
+        log_lines = []
         try:
-            rows = parse_docx_queue(Path(path))
-        except Exception as e:
-            self._batch_status_lbl.config(
-                text=f"Could not read DOCX queue: {e}", fg=ERROR_RED
-            )
-            return
-        if not rows:
-            self._batch_status_lbl.config(
-                text="No valid rows found. Use a table with URL / Case Title / Caption.",
-                fg=ERROR_RED
-            )
-            return
-        for item in rows:
-            self._batch_add_row(
-                path=None,
-                url=item["url"],
-                case_title=item["title"],
-                caption=item["caption"],
-                final_caption=True,
-            )
-        self._batch_status_lbl.config(
-            text=f"Loaded {len(rows)} DOCX queue item{'s' if len(rows) != 1 else ''}.",
-            fg=SUCCESS
-        )
-        self._refresh_batch_ui()
+            self._set_row_status(row, "🔎  Researching…")
+            self._set_row_badge(row, "working")
+            try:
+                metadata = probe_local_video(path) if path else fetch_url_metadata(url)
+            except Exception as e:
+                metadata = {}
+                log_lines.append(f"Metadata fetch failed: {e}")
 
-    def _quick_publish_latest(self):
-        """Auto-import all new cases from the DOCX that aren't yet in Buffer, then publish."""
-        if self._batch_running:
-            self._batch_status_lbl.config(text="Batch already running.", fg=ERROR_RED)
-            return
-        if not IMPORT_DOCX_PATH.exists():
-            self._batch_status_lbl.config(
-                text=f"Not found: {IMPORT_DOCX_PATH.name}", fg=ERROR_RED
-            )
-            return
-        try:
-            rows = parse_docx_queue(IMPORT_DOCX_PATH)
-        except Exception as e:
-            self._batch_status_lbl.config(text=f"Could not read DOCX: {e}", fg=ERROR_RED)
-            return
-        if not rows:
-            self._batch_status_lbl.config(
-                text="No valid rows found in the import document.", fg=ERROR_RED
-            )
-            return
+            title = row["case_var"].get().strip()
+            if not title:
+                detected = metadata.get("title") or metadata.get("page_title")
+                detected = detected or (path.stem if path else url)
+                title = filename_to_display(name_to_filename(detected))
+                self.after(0, lambda t=title: row["case_var"].set(t))
 
-        self._batch_status_lbl.config(text="Checking Buffer queue…", fg=LIGHT_GRAY)
-        self.update_idletasks()
+            self._set_row_status(row, "✍️  Writing caption…")
+            caption, status = generate_case_caption(title, metadata, url, log_lines)
 
-        s = load_settings()
-        buffer_key = s.get("buffer_key", "").strip()
-        channel_id = s.get("buffer_channel_id", "").strip()
+            def _apply(c=caption):
+                row["caption_text"].delete("1.0", "end")
+                row["caption_text"].insert("1.0", c)
+            self.after(0, _apply)
 
-        # Find which rows are already scheduled in Buffer by matching the case title
-        # against each scheduled post's caption text.
-        cutoff_idx = -1  # index of the last row already in Buffer
-        if buffer_key and channel_id:
-            scheduled_texts, err = fetch_buffer_scheduled_texts(buffer_key, channel_id)
-            if err:
-                self._batch_status_lbl.config(
-                    text=f"Buffer query failed: {err}", fg=ERROR_RED
+            if status == READY:
+                self._set_row_status(row, "✓  Caption ready", SUCCESS)
+                self._set_row_badge(row, "ready")
+            else:
+                self._set_row_status(
+                    row, "⚠  Needs review — verify sources before scheduling", WARNING
                 )
-                return
-            if not scheduled_texts:
-                self._batch_status_lbl.config(
-                    text="Buffer returned no scheduled posts — check API key / channel ID.",
-                    fg=ERROR_RED
-                )
-                return
-            combined = "\n".join(t.lower() for t in scheduled_texts)
-            for i in range(len(rows) - 1, -1, -1):
-                if rows[i]["title"].lower() in combined:
-                    cutoff_idx = i
-                    break
-        else:
-            self._batch_status_lbl.config(
-                text="Buffer credentials not set in Settings.", fg=ERROR_RED
-            )
-            return
-
-        new_rows = rows[cutoff_idx + 1:]  # everything after the last synced case
-
-        if not new_rows:
-            self._batch_status_lbl.config(
-                text="All cases in the document are already scheduled in Buffer.",
-                fg=SUCCESS
-            )
-            return
-
-        # Clear existing batch rows
-        for row in list(self._batch_rows):
-            row["frame"].destroy()
-        self._batch_rows.clear()
-        self._refresh_batch_ui()
-
-        for item in new_rows:
-            self._batch_add_row(
-                path=None,
-                url=item["url"],
-                case_title=item["title"],
-                caption=item["caption"],
-                final_caption=True,
-            )
-        self._refresh_batch_ui()
-
-        last_synced = rows[cutoff_idx]["title"] if cutoff_idx >= 0 else "none"
-        self._batch_status_lbl.config(
-            text=f'Found {len(new_rows)} new case{"s" if len(new_rows) != 1 else ""}'
-                 f' after "{last_synced}". Starting…',
-            fg=LIGHT_GRAY
-        )
-        self._start_batch()
+                self._set_row_badge(row, "needs_review")
+        except Exception as e:
+            self._set_row_status(row, f"✗  Failed: {e}", ERROR_RED)
+            self._set_row_badge(row, "error")
 
     def _batch_add_row(self, path: Path = None, url: str = "",
                        case_title: str = "", caption: str = "",
-                       final_caption: bool = False):
+                       final_caption: bool = True):
         idx = len(self._batch_rows)
         bg = CARD_ALT if idx % 2 == 0 else CARD_HOVER
 
@@ -590,6 +536,12 @@ class App(tk.Tk):
                                highlightcolor=CRIMSON)
         title_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
 
+        # Status badge (verification/caption readiness — set by _set_row_badge)
+        fg, badge_bg = STATUS_STYLES["neutral"]
+        badge_lbl = tk.Label(inner, text=" QUEUED ", font=(FONT_FAMILY, 7, "bold"),
+                             fg=fg, bg=badge_bg, anchor="center")
+        badge_lbl.grid(row=0, column=2, padx=(0, 6))
+
         # Scheduled date label
         s = load_settings()
         dt = batch_post_datetime(s.get("post_time", "18:00"), idx)
@@ -597,7 +549,7 @@ class App(tk.Tk):
         date_str = local_dt.strftime("%b %-d")
         date_lbl = tk.Label(inner, text=date_str, font=(FONT_FAMILY, 8, "bold"),
                             fg=CRIMSON, bg=bg, width=7, anchor="center")
-        date_lbl.grid(row=0, column=2, padx=(0, 6))
+        date_lbl.grid(row=0, column=3, padx=(0, 6))
 
         # Remove button
         remove_btn = _make_lbtn(
@@ -605,21 +557,21 @@ class App(tk.Tk):
             bg=bg, fg=TEXT_DIM, hover_bg=bg, hover_fg=ERROR_RED, normal_fg=TEXT_DIM,
             font=(FONT_FAMILY, 11, "bold"), pady=2, padx=4
         )
-        remove_btn.grid(row=0, column=3, padx=(4, 0))
+        remove_btn.grid(row=0, column=4, padx=(4, 0))
 
-        # Raw caption text area (full width, row 1)
+        # Raw caption text area (full width, row 1) — editable before scheduling
         caption_text = tk.Text(inner, height=4, font=(FONT_FAMILY, 9),
                                fg=WHITE, bg=INPUT_BG, insertbackground=WHITE,
                                relief="flat", highlightthickness=1,
                                highlightbackground=BORDER, highlightcolor=CRIMSON,
                                wrap="word", padx=6, pady=6)
-        caption_text.insert("1.0", caption or "Paste raw caption here...")
-        caption_text.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(6, 2))
+        caption_text.insert("1.0", caption or "⏳  Researching & writing caption…")
+        caption_text.grid(row=1, column=0, columnspan=5, sticky="ew", pady=(6, 2))
 
         # Status label (shown after processing)
         status_lbl = tk.Label(inner, text="", font=(FONT_FAMILY, 8),
                               fg=LIGHT_GRAY, bg=bg, anchor="w")
-        status_lbl.grid(row=2, column=0, columnspan=3, sticky="w")
+        status_lbl.grid(row=2, column=0, columnspan=4, sticky="w")
 
         inner.columnconfigure(1, weight=1)
 
@@ -631,10 +583,14 @@ class App(tk.Tk):
             "caption_text": caption_text,
             "frame": frame,
             "status_lbl": status_lbl,
+            "badge_lbl": badge_lbl,
             "date_lbl": date_lbl,
+            "proc_status": "ready" if caption else "queued",
             "idx": idx,
         }
         self._batch_rows.append(row_data)
+        if caption:
+            self._set_row_badge(row_data, "ready")
 
     def _batch_remove_row(self, original_idx):
         # Find by original idx (rows don't shift their stored idx)
@@ -674,6 +630,15 @@ class App(tk.Tk):
     def _start_batch(self):
         if self._batch_running or not self._batch_rows:
             return
+        # Don't let Schedule All race a still-running research/caption job —
+        # the row's caption box may still hold the "researching…" placeholder.
+        if any(row.get("proc_status") in ("queued", "working") for row in self._batch_rows):
+            self._batch_status_lbl.config(
+                text="⚠  Still researching & writing captions — wait for every video to finish "
+                     "before scheduling.",
+                fg=CRIMSON
+            )
+            return
         # Validate all rows have a non-empty case name
         for row in self._batch_rows:
             if not row["case_var"].get().strip():
@@ -693,7 +658,7 @@ class App(tk.Tk):
                     raise FileNotFoundError
             except Exception:
                 self._batch_status_lbl.config(
-                    text="⚠  yt-dlp is needed for DOCX URL batches. Install it from Settings.",
+                    text="⚠  yt-dlp is needed to download video URLs. Install it from Settings.",
                     fg=CRIMSON
                 )
                 return
@@ -767,7 +732,9 @@ class App(tk.Tk):
                 set_row_status(f"✓  Saved as {output_path.name}", SUCCESS)
                 continue
 
-            # Step 2: caption. DOCX captions are final Buffer captions.
+            # Step 2: caption. Add Videos rows already hold a reviewed, final
+            # VerdictIn60-style caption (final_caption defaults True) — only
+            # mechanically reformat if a caller explicitly opted out of that.
             caption = raw_caption if row.get("final_caption") else reformat_caption(title, raw_caption)
 
             # Step 3: upload
