@@ -59,7 +59,7 @@ python3 app.py
 - `verdictin60_ui/` — Tkinter UI modules for the Batch/Recovery/Settings tabs, shared widgets, and the app's design system/theme.
 - `assets/` — required media assets (logo, voiceover, CTA end card).
 - `requirements.txt` — Python package requirements.
-- `docs/` — project documentation for maintainers and AI assistants (`AI_RULES.md`, `ARCHITECTURE.md`, `PROJECT_CONTEXT.md`, `ROADMAP.md`).
+- `docs/` — project documentation for maintainers and AI assistants (`AI_RULES.md`, `ARCHITECTURE.md`, `PROJECT_CONTEXT.md`, `ROADMAP.md`, `RUFLO.md`).
 
 ## Current UI Refactor Status
 
