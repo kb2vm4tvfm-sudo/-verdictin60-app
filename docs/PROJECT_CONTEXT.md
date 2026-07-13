@@ -4,19 +4,25 @@ VerdictIn60 is a local macOS desktop app for producing and scheduling short true
 
 ## Core Purpose
 
-The app supports a repeatable content workflow through the Batch tab:
+The app supports a repeatable content workflow through the Batch tab's single
+**Add Videos** action:
 
-1. Queue a source video from a local file, a pasted URL, or a DOCX queue.
-2. Produce a finished reel with the configured assets.
-3. Upload the finished media to Internet Archive.
-4. Schedule the post through Buffer.
-5. Track the case in a local SQLite-backed library.
+1. Add one or more sources at once — pasted URLs, an imported `.txt`/`.csv`
+   URL list, and/or local video files.
+2. The app researches each source (yt-dlp/page metadata) and generates an
+   official VerdictIn60-style caption per item, falling back to a local
+   template (flagged "needs review") when AI is unavailable.
+3. Review and edit each title/caption in the queue before scheduling.
+4. Produce a finished reel with the configured assets.
+5. Upload the finished media to Internet Archive.
+6. Schedule the post through Buffer.
+7. Track the case in a local SQLite-backed library.
 
 The Recovery tab runs a local health check and repairs common setup problems; the Settings dialog manages AI/provider settings, Buffer settings, and the safety/cost guard.
 
 ## Important Source Files
 
-- `app.py`: main Tkinter application — Batch tab, Recovery tab, settings dialog, DOCX queue import, ffmpeg export, Internet Archive upload, and Buffer scheduling.
+- `app.py`: main Tkinter application — Batch tab, Recovery tab, settings dialog, ffmpeg export, Internet Archive upload, and Buffer scheduling.
 - `case_library.py`: SQLite case library, Buffer sync, status updates, captions, timelines, and thumbnail generation.
 - `verdictin60_captions.py`: built-in caption library and caption text content.
 - `requirements.txt`: Python packages required by the project.

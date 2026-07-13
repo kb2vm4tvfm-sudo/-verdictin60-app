@@ -5,11 +5,15 @@ VerdictIn60 is a Python desktop application centered around `app.py`, with `case
 ## High-Level Flow
 
 ```text
-Local file / URL / DOCX queue (Batch tab)
+Add Videos: pasted URLs / imported .txt,.csv list / local files (Batch tab)
         |
         v
 Tkinter app in app.py
         |
+        +--> per-item metadata research (verdictin60_core/metadata.py)
+        +--> per-item caption generation (verdictin60_core/caption_pipeline.py,
+        |    AI first, local VerdictIn60-style template as fallback)
+        +--> review/edit in the queue, then Schedule All
         +--> source download through yt-dlp (for queued URL rows)
         +--> video processing through ffmpeg and assets/
         +--> upload through Internet Archive
@@ -25,12 +29,30 @@ Responsibilities:
 
 - App startup and Tkinter UI: Batch tab, Recovery tab, and the Settings dialog.
 - Settings loading and saving through `settings.json`.
-- DOCX queue parsing from `VerdictIn60_Import_With_Captions.docx`.
-- Batch caption formatting/reformatting.
+- Batch tab orchestration: the Add Videos workflow (research + caption
+  generation per row, off the main thread), row review/edit state, and
+  Schedule All.
 - ffmpeg export pipeline.
 - Internet Archive upload.
 - Buffer scheduling.
 - Recovery assistant and health checks.
+
+### verdictin60_core/metadata.py, batch_items.py, caption_style.py, caption_pipeline.py
+
+Responsibilities:
+
+- `batch_items.py`: parses pasted URLs and imported `.txt`/`.csv` URL lists
+  for the Add Videos dialog.
+- `metadata.py`: lightweight per-item research — yt-dlp metadata, a raw
+  page-title fetch, or ffprobe tags for local files.
+- `caption_style.py`: the official VerdictIn60 caption structure (hook /
+  story / context / CTA / exactly 20 hashtags / Research & Verification),
+  the AI prompt, the local fallback template, and the constraint enforcer
+  that guarantees every caption stays under 2,200 characters.
+- `caption_pipeline.py`: ties the two together — tries the configured AI
+  provider (`verdictin60_core/ai.py`, respecting the cost/quota guard),
+  validates its output, and falls back to the local template (flagged
+  "needs review") when AI is unavailable or its output doesn't hold up.
 
 ### case_library.py
 
@@ -71,7 +93,7 @@ Long-running video work should remain off the Tkinter main thread.
 
 ## AI/Provider Settings
 
-Settings still exposes AI speed mode and provider configuration (`verdictin60_core/ai.py`), and Recovery's health check still verifies that the configured Ollama models are installed. No tab currently calls the AI caption-generation pipeline directly — Batch captions come from `reformat_caption` — but the provider settings and safety/cost guard (`verdictin60_core/provider_guard.py`) remain in place for Recovery diagnostics and future use.
+Settings exposes AI speed mode and provider configuration (`verdictin60_core/ai.py`), and Recovery's health check verifies that the configured Ollama models are installed. The Batch tab's Add Videos workflow calls the AI caption-generation pipeline (`verdictin60_core/caption_pipeline.py`) directly for every new item, always through the cost/quota safety guard (`verdictin60_core/provider_guard.py`) — falling back to a local, editable VerdictIn60-style caption template when AI is unavailable or its output fails validation.
 
 ## Upload And Scheduling
 
