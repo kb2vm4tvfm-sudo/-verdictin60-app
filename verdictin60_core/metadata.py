@@ -21,6 +21,20 @@ FFPROBE = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
 
 EMPTY_METADATA = {"title": "", "description": "", "uploader": "", "page_title": ""}
 
+# Instagram serves a generic placeholder page (no real post content) to
+# logged-out/blocked requests, but still returns 200 with a bare <title> like
+# "Instagram" or a login prompt. Without this check that placeholder gets
+# mistaken for real metadata - it becomes the case title AND the caption
+# "description", producing a useless caption that just says "Instagram".
+_BLOCKED_INSTAGRAM_TITLE_RE = re.compile(
+    r"^\s*(instagram(\s*[•\-|]\s*photos and videos)?|log ?in\s*[•\-|]?\s*instagram|instagram\s*[•\-|]?\s*log ?in)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_blocked_instagram_page(url: str, page_title: str) -> bool:
+    return "instagram.com" in url.lower() and bool(_BLOCKED_INSTAGRAM_TITLE_RE.match(page_title))
+
 
 def fetch_url_metadata(url: str, timeout: int = 25) -> dict:
     """Best-effort metadata for a video URL: yt-dlp first, then a raw page-title
@@ -44,7 +58,9 @@ def fetch_url_metadata(url: str, timeout: int = 25) -> dict:
                 html = r.read(200_000).decode("utf-8", errors="ignore")
             m = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
             if m:
-                meta["page_title"] = re.sub(r"\s+", " ", m.group(1)).strip()
+                page_title = re.sub(r"\s+", " ", m.group(1)).strip()
+                if not _looks_like_blocked_instagram_page(url, page_title):
+                    meta["page_title"] = page_title
         except Exception:
             pass
 
